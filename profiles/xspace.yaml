@@ -1,0 +1,14 @@
+﻿description: "All users must have SSH keys based-on passphrase" with at least an entropy of 60 bits, generated with the 'xspace' profile.
+source: "profiles/profiles.json#xspace"
+instructions: |
+  Randomly build from 4 fields related to movies based on that structure:
+  1. Movie title as an action followed by an hyphen '-'
+  2. Movie heroes followed by '@'
+  3. Movie title followed by '.'
+  4. Time stamp (All)
+examples:
+  - contact-neo@alice_in_wonderland.forever
+  - die_hard-henry@enemy_lines.yesterday
+  - crank-chester@christmas_vacation.always
+  - upgrade-ripley@always.never
+  - drive-rocky@driving_miss_daisy.until_then

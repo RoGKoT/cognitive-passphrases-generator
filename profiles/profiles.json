@@ -1,0 +1,11 @@
+{
+  "xspace": {
+    "files": {
+      "actions": "xspace/movies.action-titles.json",
+      "heroes": "xspace/movies.heroes.json",
+      "titles": "xspace/movies.titles.json",
+      "timestamps": "common/timestamps/*"
+    },
+    "separators": ["-", "@", "."]
+  }
+}
