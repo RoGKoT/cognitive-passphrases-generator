@@ -121,7 +121,10 @@ def format_phrase(value: str, key: str, grammar: dict[str, Any]) -> str:
         return ""
     article = grammar.get("articles", {}).get(key)
     if article:
-        return f"{article} {value}"
+        normalized = value.strip()
+        if normalized.lower().startswith(f"{article.lower()} "):
+            return normalized
+        return f"{article} {normalized}"
     return value
 
 
@@ -130,7 +133,30 @@ def apply_preposition(value: str, key: str, grammar: dict[str, Any]) -> str:
         return ""
     preposition = grammar.get("prepositions", {}).get(key)
     if preposition:
-        return f"{preposition} {value}"
+        normalized = value.strip()
+        first_word = normalized.split()[0].lower()
+        known_prepositions = {
+            "at",
+            "in",
+            "on",
+            "before",
+            "after",
+            "during",
+            "since",
+            "until",
+            "while",
+            "when",
+            "by",
+            "near",
+            "nearby",
+            "within",
+            "as",
+            "throughout",
+            "once",
+        }
+        if first_word == preposition.lower() or first_word in known_prepositions:
+            return normalized
+        return f"{preposition} {normalized}"
     return value
 
 

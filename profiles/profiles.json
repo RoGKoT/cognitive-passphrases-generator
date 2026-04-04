@@ -11,11 +11,11 @@
   "movies": {
     "files": "sources.json#movies",
     "language": "en-us",
-    "fields": 6,
+    "fields": "all",
     "order": "random",
     "separators": "all",
     "marked-syntax": "all",
-    "output": "readable sentence",
+    "output": "ai sentence",
     "terminal-punctuation": "sentence mood"
     }
 }
