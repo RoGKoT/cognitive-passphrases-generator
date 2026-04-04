@@ -1,11 +1,21 @@
 {
   "xspace": {
     "files": {
-      "actions": "xspace/movies.action-titles.json",
-      "heroes": "xspace/movies.heroes.json",
-      "titles": "xspace/movies.titles.json",
+      "actions": "movies/actions/*",
+      "heroes": "movies/peoples/heroes/*",
+      "titles": "movies/titles/*",
       "timestamps": "common/timestamps/*"
     },
     "separators": ["-", "@", "."]
-  }
+  },
+  "movies": {
+    "files": "sources.json#movies",
+    "language": "en-us",
+    "fields": 6,
+    "order": "random",
+    "separators": "all",
+    "marked-syntax": "all",
+    "output": "readable sentence",
+    "terminal-punctuation": "sentence mood"
+    }
 }

@@ -1,0 +1,26 @@
+{
+  "sentence_prefixes": [
+    "Suddenly, ",
+    "Unexpectedly, ",
+    "Quietly, ",
+    "Without warning, "
+  ],
+  "action_modifiers": [
+    "bravely",
+    "reluctantly",
+    "mysteriously",
+    "boldly"
+  ],
+  "location_modifiers": [
+    "nearby",
+    "deep inside",
+    "far away",
+    "on the edge of"
+  ],
+  "timestamp_modifiers": [
+    "at dusk",
+    "before dawn",
+    "last night",
+    "in the morning"
+  ]
+}

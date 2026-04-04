@@ -1,0 +1,21 @@
+{
+  "syntax_styles": {
+    "normal": ["standard-order"],
+    "inversion": ["inversion"],
+    "anastrophe": ["anastrophe"],
+    "hyperbaton": ["hyperbaton"],
+    "anacoluthon": ["anacoluthon"],
+    "ellipsis": ["ellipsis"],
+    "asyndeton": ["asyndeton"],
+    "polysyndeton": ["polysyndeton"],
+    "parenthesis": ["parenthesis"],
+    "chiasmus": ["chiasmus"],
+    "parataxis": ["parataxis"],
+    "inverted": ["inversion", "anastrophe"],
+    "disrupted": ["hyperbaton", "anacoluthon"],
+    "compressed": ["ellipsis", "asyndeton"],
+    "expanded": ["polysyndeton", "parenthesis"],
+    "mirrored": ["chiasmus"],
+    "stacked": ["parataxis"]
+  }
+}

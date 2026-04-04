@@ -1,0 +1,12 @@
+{
+  "movies": {
+    "files": {
+      "actors":"movies/peoples/actors/*",
+      "characters":"movies/peoples/characters/*",
+      "heroes":"movies/peoples/heroes/*",
+      "locations": "movies/locations/*",
+      "actions": "movies/actions/*",
+      "timestamps": "movies/timestamps/*"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "articles": {
+    "subject": "the",
+    "object": "the"
+  },
+  "prepositions": {
+    "location": "in",
+    "timestamp": "at"
+  },
+  "default_subject": "Someone",
+  "default_verb": "discovers",
+  "default_object": "a mystery"
+}
