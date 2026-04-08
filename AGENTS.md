@@ -73,13 +73,8 @@ For this repository, profile-driven behavior must be implemented from explicit p
 If a profile key has documented or user-defined semantics, the agent must implement exactly those semantics.
 
 For profile changes:
-- `language` controls language-specific source resolution
-- `fields` controls field selection
 - `order` controls field ordering strategy
 - `separators` controls valid separators and separator source resolution
-- `marked-syntax` controls syntax style selection
-- `output` controls output mode
-- `terminal-punctuation` controls terminal punctuation behavior
 
 If any of these semantics are unclear at implementation time, the agent must ask before coding.
 

@@ -1,0 +1,6 @@
+"name": "profile name" ex: "example",
+"files": "source file and id of the files to be used for fields values", ex: "sources.json#example",
+"separators": "list of separators to use between fields values", ex: "[',', ';', '|']"
+
+It is required to use all fields at least once in the sentence.
+Between each field, a separator must be used.

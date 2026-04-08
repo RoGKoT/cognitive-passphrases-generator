@@ -1,8 +1,0 @@
-[
-  "{prefix}{subject} {verb} {object} {location} {timestamp}",
-  "In {location}, {subject} {verb} {object} {timestamp}",
-  "When {timestamp}, {subject} {verb} {object} {location}",
-  "{subject} {verb} {object} {timestamp}",
-  "{subject} {verb} {object} {location} {timestamp}",
-  "{prefix}{subject} {verb} {object} {modifier}"
-]

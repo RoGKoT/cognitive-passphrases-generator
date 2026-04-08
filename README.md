@@ -1,24 +1,15 @@
 # Cognitive Passphrases Generator
 
-## 1. Purpose
+A local-first passphrase generator built from JSON catalogs and profile definitions.
 
-A profile-driven passphrase generator based on `profiles/profiles.json` and JSON lists under `catalog/*`.
+## Install
 
-- `generate_passphrase.py` builds a passphrase from a profile.
-- `profiles/profiles.json` defines patterns and components.
-- `catalog/` stores value lists and vocabulary files.
-- `xspace` is an example built-in profile.
+### Requirements
 
-## 2. Requirements
+- Python 3.10 or later
+- Optional: Poetry for development
 
-- Python 3.10+ (recommended)
-- Poetry for dependency management (optional)
-
-## 2.1 Installation
-
-### Basic installation (no extra dependencies)
-
-Clone the repository and run directly:
+### Install from source
 
 ```bash
 git clone <repository-url>
@@ -26,7 +17,13 @@ cd cognitive-passphrases-generator
 python generate_passphrase.py xspace
 ```
 
-### Installation with Poetry (recommended for development)
+### Install in editable mode
+
+```bash
+pip install -e .
+```
+
+### Install with Poetry
 
 ```bash
 git clone <repository-url>
@@ -35,170 +32,101 @@ poetry install
 poetry run python generate_passphrase.py xspace
 ```
 
-### Installation with pip
+## Quick start
+
+Generate a passphrase from the built-in `xspace` profile:
 
 ```bash
-pip install -e .
+python generate_passphrase.py xspace
 ```
 
-## 2.2 Development
+Print generation details:
 
-To contribute to the project:
+```bash
+python generate_passphrase.py xspace --details
+```
 
-1. Install development dependencies: `poetry install`
-2. Run tests: `poetry run pytest`
-3. Run linting: `poetry run ruff check .`
-4. Check types: `poetry run mypy generate_passphrase.py`
-5. Run security checks: `poetry run bandit -r generate_passphrase.py`
+## CLI reference
 
-## 3. Data structure
+```bash
+python generate_passphrase.py PROFILE [--count N] [--details] [--random]
+```
 
-### 3.1 Token lists
+Supported options:
 
-Value lists are stored under `catalog/` as JSON files:
-- `catalog/movies/actions/en-us.json`
-- `catalog/common/timestamps/past.json`
-- `catalog/common/vocabulary/separators.json`
-- `catalog/common/vocabulary/sentence_templates.json`
-- `catalog/common/vocabulary/grammar.json`
-- `catalog/common/vocabulary/phrase_modifiers.json`
+- `PROFILE`: profile name defined in `profiles/profiles.json`
+- `--count`, `-n`: number of passphrases to generate (default: `1`)
+- `--details`, `-d`: print generation details for fields, separators, and entropy
+- `--random`: use random field order instead of the default normal order
 
-A token refers to a set of values chosen at random.
+Validation is performed automatically before passphrase rendering.
 
-The generator resolves a token using these rules (JSON-only):
-1. `name` must be a valid JSON path, such as `catalog/common/timestamps/past.json`.
-2. Namespace-style paths are supported, e.g. `movies/actions/*` or `xspace/movies.heroes.json`.
-3. Simple tokens must explicitly point to a JSON file, e.g. `common/timestamps/past.json`.
-4. Wildcards like `/*` load all JSON files in the target directory.
+Reserved future flags:
 
-If no match is found, the generator raises `ValueError`.
+- `--ai <name:API_KEY>`: AI augmentation
+- `--ai <language:code>`: AI language target
+- AI marked-syntax
+- AI terminal_punctuation:>
 
-### 3.2 Profiles (`profiles/profiles.json`)
+## Profile model
 
-A profile is an object that may include several configuration keys:
-- `files`: object with token definitions or a reference like `sources.json#movies`
-- `language`: language code (`en-us`, `fr-ca`, `fr-fr`, `all`)
-- `fields`: `all`, a positive integer, or a list of field names
-- `order`: `random`, `ascending`, `descending`, `strict`
-- `separators`: list or `all`
-- `marked-syntax`: `all` or a specific style
-- `output`: `strict`, `readable sentence`, `ai sentence`
-- `terminal-punctuation`: `sentence mood`, `none`, `random`, `strict`
+Profiles are defined in `profiles/profiles.json` as a JSON object.
 
-Valid example:
+Each profile currently supports these keys:
+
+- `files`: object mapping fields to token sources, or a source reference string such as `sources.json#movies`
+- `separators`: a list of separator strings, or the value `all` to load `catalog/common/separators.json`
+
+Example profile:
 
 ```json
 {
-  "movies": {
-    "files": "sources.json#movies",
-    "language": "en-us",
-    "fields": 6,
-    "order": "random",
-    "separators": "all",
-    "marked-syntax": "all",
-    "output": "readable sentence",
-    "terminal-punctuation": "sentence mood"
+  "xspace": {
+    "files": {
+      "actors": "movies/peoples/actors.json",
+      "titles": "movies/titles.json"
+    },
+    "separators": [" ", "-"]
   }
 }
 ```
 
-### 3.3 Profile validation
+## Current behavior
 
-The `profiles/validation.py` module exposes:
-- `validate_profile_definition(profile_def)`
-- `validate_profiles_file(path)`
+- `files` resolves catalog token lists and selects one value per field.
+- `separators` defines how selected values are joined.
+- `order: normal` preserves the profile field order.
+- `order: random` shuffles fields before rendering.
+- Entropy is estimated from the selected token lists, the order mode, and separators.
 
-Use these functions to verify that a profile is valid before generation.
+## Future work
 
-## 4. Usage
+The following profile capabilities are planned but not implemented yet:
 
-```bash
-cd y:/Projets/cognitive-passphrases-generator
-python generate_passphrase.py xspace
-python generate_passphrase.py movies --count 3
-python generate_passphrase.py movies --validate
-```
+- `language` selection for localized token resolution
+- `fields` count or explicit field selection
+- richer `output` modes such as readable or AI-style sentences
+- `marked-syntax` templates and sentence modifiers
+- `terminal-punctuation` control
 
-The output mode is defined only in the profile (`output`) and cannot be overridden on the command line.
+## Configuration
 
-See `USER_MANUAL.md` for the complete usage guide, profile structure, and supported values.
+- `profiles.json` is loaded from `profiles/`
+- `catalog/` contains the token source JSON files
+- `paths.env` can override `PROFILES` and `CATALOG`
 
-## 6. CLI options
+## Documentation site
 
-- `profile`: required positional argument, the profile name defined in `profiles.json`
-- `--profile, -p`: optional alias for specifying the profile with a named flag
-- `--count, -n`: number of passphrases (default 1)
-- `--validate`: validate the profile and exit without generating
+The project documents are available under `docs/`.
 
-## 7. Output and entropy classification
+- Home: `docs/index.md`
+- User manual: `docs/USER_MANUAL.md`
+- Changelog: `docs/changelog.md`
 
-The script prints:
+## Contribution
 
-`Cognitive Passphrases Generator - Actual Entropy level [XX.XX] (<level>)`
-
-Entropy levels:
-- `very low` (< 28)
-- `low` (28–39)
-- `medium` (40–59)
-- `high` (60–79)
-- `very high` (>= 80)
-
-## 8. Behavior
-
-- `render_profile_definition()` processes profiles and selects values from JSON files.
-- `build_readable_sentence()` uses templates and grammar rules to produce natural sentences.
-- `output: "readable sentence"` generates a structured sentence without raw source separators.
-- `output: "ai sentence"` enriches the sentence with style modifiers and prefixes.
-- `list_from_name()` searches in:
-  - `DATA_DIR/*.json`, `DATA_DIR/categories/*.json`
-  - `CATALOG_DIR/*.json`, `CATALOG_DIR/categories/*.json`
-  - `catalog/**/*` recursively
-- `separators: all` now uses `catalog/common/vocabulary/separators.json`.
-
-## 8. Contribution
-
-### Contribution guide
-
-We welcome contributions. Please follow these steps:
-
-1. Fork the repository
-2. Create a branch for your feature: `git checkout -b feature/AmazingFeature`
-3. Commit your changes: `git commit -m 'Add some AmazingFeature'`
-4. Push the branch: `git push origin feature/AmazingFeature`
-5. Open a pull request
-
-### Code standards
-
-- Follow PEP 8 style
-- Add type hints for functions
-- Write Google-style docstrings
-- Add tests for new features
-- Ensure tests pass and code is linted
-
-### Tests
-
-Run tests with:
-
-```bash
-poetry run pytest
-```
-
-Target coverage: 80%+
-
-### Linting and type checks
-
-```bash
-poetry run ruff check .
-poetry run ruff format .
-poetry run mypy generate_passphrase.py
-```
-## 8. Tests
-
-- `test_generate_passphrase.py` covers:
-  - entropy estimation (`estimate_*_entropy`)
-  - rendering (pattern + `files` objects)
-- execution:
-
-```bash
-python -c "from test_generate_passphrase import run_all_tests; run_all_tests()"
-```
+1. Fork the repository.
+2. Create a branch: `git checkout -b feature/<name>`.
+3. Add tests and documentation.
+4. Commit with a clear message.
+5. Open a pull request.

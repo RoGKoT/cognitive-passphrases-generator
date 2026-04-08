@@ -4,15 +4,10 @@ instructions: |
     - An actor
     - A character
     - A hero
-    - A location
-    - An action
-    - A time stamp
-
-  It is required to use all 6 fields at least once in the sentence, but the order can be random.
-  Fields can be separated by any mixed and complex vocabulary words, punctuations, conjunctions, etc.
-  Syntax style is mixed up, meaning that the sentence can be a simple sentence, a compound sentence, a complex sentence, or a compound-complex sentence.
-  Sentence should end with a terminal punctuation ('.', '!', '?') based on the sentence mood.
-
+    - A location (a movie title representing a location ex: "Casablanca")
+    - An action (a movie title representing an action ex: "Drag Me To Hell")
+    - A time stamp (a movie title representing a time stamp ex: "Before Sunset")
+  
 examples:
- - Dayne Jonhson, The Rock and Luke Hobbs in the city of Los Angeles, fighting against the bad guys until the end of time.
+ - Asia Kate Dillon, Shuri and Black Panther@Dallas Buyers Club;Punch_Labor Day
  

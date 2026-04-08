@@ -1,21 +1,19 @@
 {
-  "xspace": {
-    "files": {
-      "actions": "movies/actions/*",
-      "heroes": "movies/peoples/heroes/*",
-      "titles": "movies/titles/*",
-      "timestamps": "common/timestamps/*"
-    },
-    "separators": ["-", "@", "."]
+  "example": {
+    "files": "sources.json#example",
+    "separators": [" ", " "]
   },
   "movies": {
     "files": "sources.json#movies",
-    "language": "en-us",
-    "fields": "all",
-    "order": "random",
-    "separators": "all",
-    "marked-syntax": "all",
-    "output": "ai sentence",
-    "terminal-punctuation": "sentence mood"
-    }
+    "separators": [", ", " and ", "@",">"," "]
+  },
+  "xspace": {
+    "files": {
+      "actions": "movies/titles-as/verbs.json",
+      "heroes": "movies/peoples/heroes/*",
+      "titles": "movies/titles.json",
+      "timestamps": "movies/titles-as/timestamps.json"
+    },
+    "separators": ["-", "@", "."]
+  }
 }
