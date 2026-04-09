@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import itertools
 import json
 import math
 import os
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 DATA_DIR = Path(__file__).resolve().parent
+MAX_ODDS = 100
+MIN_KEYS_FOR_DELIMITERS = 2
 
 
 # Load overrides from paths.env (optional)
@@ -71,17 +74,21 @@ def load_project_version(project_file: Path) -> str:
     except OSError:
         return "0.0.0"
 
+    tomllib = None
     try:
-        import tomllib
-
-        data = tomllib.loads(raw_text)
-        project = data.get("project")
-        if isinstance(project, dict):
-            version = project.get("version")
-            if isinstance(version, str):
-                return version
-    except Exception:
-        pass
+        import tomllib  # noqa: PLC0415
+    except ModuleNotFoundError:
+        tomllib = None
+    if tomllib is not None:
+        try:
+            data = tomllib.loads(raw_text)
+            project = data.get("project")
+            if isinstance(project, dict):
+                version = project.get("version")
+                if isinstance(version, str):
+                    return version
+        except (ValueError, OSError):
+            pass
 
     match = re.search(
         r'(?m)^[ \t]*version[ \t]*=[ \t]*["\']([^"\']+)["\']',
@@ -295,11 +302,12 @@ def select_supplemental_value(
     values: list[str], odds: dict[str, Any] | None = None,
 ) -> str:
     if not values:
-        raise ValueError("Supplemental values list must not be empty")
+        message = "Supplemental values list must not be empty"
+        raise ValueError(message)
 
     odds = odds or {}
     odds_space = odds.get("space")
-    if isinstance(odds_space, (int, float)) and 0 < odds_space <= 100:
+    if isinstance(odds_space, (int, float)) and 0 < odds_space <= MAX_ODDS:
         space_values = [value for value in values if value == " "]
         if space_values:
             if random_generator.randrange(100) < int(odds_space):
@@ -318,32 +326,38 @@ def feature_triggers(feature_def: dict[str, Any]) -> bool:
     odds = feature_def.get("odds", 0)
     if not isinstance(odds, (int, float)) or odds <= 0:
         return False
-    return random_generator.randrange(100) < int(odds)
+    return random_generator.randrange(MAX_ODDS) < int(odds)
 
 
 def build_feature_candidates(feature_def: dict[str, Any]) -> list[str]:
     if not isinstance(feature_def, dict):
-        raise TypeError("Feature definition must be an object")
+        message = "Feature definition must be an object"
+        raise TypeError(message)
 
     candidates: list[str] = []
     file_sources = feature_def.get("files", {})
     if not isinstance(file_sources, dict):
-        raise TypeError("Feature files must be an object")
+        message = "Feature files must be an object"
+        raise TypeError(message)
 
     for source in file_sources.values():
         if not isinstance(source, str):
-            raise TypeError("Feature file references must be strings")
+            message = "Feature file references must be strings"
+            raise TypeError(message)
         values = list_from_name(source)
         if values is None:
-            raise ValueError(f"Unknown list token/path: '{source}'")
+            message = f"Unknown list token/path: '{source}'"
+            raise ValueError(message)
         candidates.extend(str(value) for value in values)
 
     explicit_values = feature_def.get("values", [])
     if not isinstance(explicit_values, list):
-        raise TypeError("Feature values must be a list")
+        message = "Feature values must be a list"
+        raise TypeError(message)
     for value in explicit_values:
         if not isinstance(value, str):
-            raise TypeError("Feature values must be strings")
+            message = "Feature values must be strings"
+            raise TypeError(message)
         candidates.append(value)
 
     return candidates
@@ -358,7 +372,11 @@ def build_feature_value(feature_def: dict[str, Any]) -> str:
     return str(random_generator.choice(values))
 
 
-def build_separator_candidates(profile_def: dict[str, Any], ignore_disabled_separators: bool = False) -> list[str]:
+def build_separator_candidates(
+    profile_def: dict[str, Any],
+    *,
+    ignore_disabled_separators: bool = False,
+) -> list[str]:
     candidates: list[str] = []
     for feature_name in ("separators", "space"):
         feature_def = profile_def.get(feature_name)
@@ -405,7 +423,7 @@ def build_delimiter_values(
     odds: dict[str, Any] | None = None,
     delimiter_feature: dict[str, Any] | None = None,
 ) -> list[str]:
-    if len(keys) < 2:
+    if len(keys) < MIN_KEYS_FOR_DELIMITERS:
         return []
 
     odds = odds or {}
@@ -414,13 +432,15 @@ def build_delimiter_values(
     if isinstance(delimiter_feature, dict):
         explicit_values = delimiter_feature.get("values", [])
         if not isinstance(explicit_values, list):
-            raise TypeError("delimiters.values must be a list")
+            message = "delimiters.values must be a list"
+            raise TypeError(message)
         for value in explicit_values:
             if not isinstance(value, str):
-                raise TypeError("delimiters.values must be strings")
+                message = "delimiters.values must be strings"
+                raise TypeError(message)
 
     separators: list[str] = []
-    for left, right in zip(keys, keys[1:]):
+    for left, right in itertools.pairwise(keys):
         file_name = delimiter_file_name(left, right)
         try:
             typed_values = load_delimiter_values(file_name) or []
@@ -442,6 +462,7 @@ def build_separator_values_for_profile(
     profile_def: dict[str, Any],
     keys: list[str],
     order: str,
+    *,
     randomize: bool = False,
 ) -> tuple[list[str], list[str], bool]:
     delimiter_feature = profile_def.get("delimiters")
@@ -577,18 +598,21 @@ def normalize_separators(spec: Any) -> list[str]:
 
 def normalize_separators_feature_spec(spec: Any) -> dict[str, Any]:
     if isinstance(spec, list):
-        return {"enabled": True, "odds": 100, "files": {}, "values": spec}
+        return {"enabled": True, "odds": MAX_ODDS, "files": {}, "values": spec}
     if isinstance(spec, dict):
         return spec
-    raise TypeError("separators must be an object or list")
+    message = "separators must be an object or list"
+    raise TypeError(message)
 
 
 def build_separator_values(
     separators: list[str],
     count: int,
     order: str,
+    *,
     randomize: bool = False,
 ) -> list[str]:
+    _ = order
     if not separators:
         return []
     if len(separators) == 1:
@@ -611,6 +635,8 @@ def order_profile_keys(keys: list[str], order: str) -> list[str]:
 
 
 def list_from_name(list_name: str, language: str | None = None) -> list[str] | None:
+    if language is not None:
+        _ = language
     stable_name = normalize_path(list_name)
     if not stable_name:
         return None
@@ -1014,7 +1040,7 @@ def estimate_order_entropy(selected_keys: list[str], order_spec: str) -> float:
 
 def estimate_delimiter_entropy(keys: list[str]) -> float:
     entropy = 0.0
-    for left, right in zip(keys, keys[1:]):
+    for left, right in itertools.pairwise(keys):
         file_name = delimiter_file_name(left, right)
         values = load_delimiter_values(file_name)
         n = len(values) if hasattr(values, "__len__") else 1
@@ -1030,7 +1056,7 @@ def _estimate_optional_feature_entropy(feature_def: dict[str, Any]) -> float:
     n = len(values) if hasattr(values, "__len__") else 1
     if n <= 0:
         return 0.0
-    if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < 100:
+    if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < MAX_ODDS:
         return math.log2(n + 1)
     return math.log2(n)
 
@@ -1064,6 +1090,8 @@ def estimate_separator_entropy(
     order_spec: str = "normal",
     field_keys: list[str] | None = None,
 ) -> float:
+    _ = count
+    _ = field_keys
     if isinstance(separators_spec, dict):
         return 0.0
 
@@ -1148,7 +1176,7 @@ def estimate_profile_definition_entropy(
         explicit_values = delimiters_spec.get("values", [])
         if isinstance(explicit_values, list):
             delimiter_candidates.extend(str(value) for value in explicit_values)
-        for left, right in zip(list(files.keys()), list(files.keys())[1:]):
+        for left, right in itertools.pairwise(list(files.keys())):
             file_name = delimiter_file_name(left, right)
             try:
                 typed_values = load_delimiter_values(file_name) or []
@@ -1160,11 +1188,11 @@ def estimate_profile_definition_entropy(
             separator_values: list[str] = []
             for feature_name in ("separators", "space"):
                 feature_def = separators_spec if feature_name == "separators" else profile_def.get(feature_name)
-                if isinstance(feature_def, dict):
-                    if feature_name == "separators":
-                        separator_values.extend(build_feature_candidates(feature_def))
-                    elif feature_def.get("enabled", False):
-                        separator_values.extend(build_feature_candidates(feature_def))
+                if isinstance(feature_def, dict) and (
+                    feature_name == "separators"
+                    or feature_def.get("enabled", False)
+                ):
+                    separator_values.extend(build_feature_candidates(feature_def))
             candidate_set = set(delimiter_candidates)
             candidate_set.update(separator_values)
             if candidate_set:
@@ -1172,7 +1200,7 @@ def estimate_profile_definition_entropy(
         else:
             n = len(delimiter_candidates) if hasattr(delimiter_candidates, "__len__") else 1
             if n > 0:
-                if isinstance(delimiters_spec.get("odds"), (int, float)) and delimiters_spec["odds"] < 100:
+                if isinstance(delimiters_spec.get("odds"), (int, float)) and delimiters_spec["odds"] < MAX_ODDS:
                     entropy += math.log2(n + 1)
                 else:
                     entropy += math.log2(n)
@@ -1183,7 +1211,7 @@ def estimate_profile_definition_entropy(
             feature_def = separators_spec if feature_name == "separators" else profile_def.get(feature_name)
             if isinstance(feature_def, dict) and feature_def.get("enabled", False):
                 separator_values.extend(build_feature_candidates(feature_def))
-                if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < 100:
+                if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < MAX_ODDS:
                     has_optional = True
         if separator_values:
             count = len(separator_values)
@@ -1191,7 +1219,8 @@ def estimate_profile_definition_entropy(
                 count += 1
             entropy += math.log2(count)
     else:
-        raise TypeError("separators must be an object")
+        message = "separators must be an object"
+        raise TypeError(message)
     entropy += estimate_prefix_entropy(profile_def)
     entropy += estimate_terminal_punctuation_entropy(profile_def)
     return entropy
@@ -1305,8 +1334,8 @@ def format_generation_details(context: dict[str, Any]) -> str:
         f"Cognitive Passphrases Generator v{__version__} - Details",
         f"  order: {context['order']}",
         f"  separators: {separators_spec}",
-        f"  prefix: {prefix_value if prefix_value else 'none'}",
-        f"  terminal punctuation: {punctuation_value if punctuation_value else 'none'}",
+        f"  prefix: {prefix_value or 'none'}",
+        f"  terminal punctuation: {punctuation_value or 'none'}",
         "",
         f"  {'Field':<10} | {'Value':<34} | Separator",
         f"  {'-' * 10} | {'-' * 34} | {'-' * 9}",
@@ -1416,10 +1445,11 @@ def main() -> None:
         message = f"Validation failed while loading profiles file: {ex}"
         raise SystemExit(message) from ex
 
-    from profiles import validate_profile_definition
+    from profiles import validate_profile_definition  # noqa: PLC0415
 
     if not isinstance(profiles, dict):
-        raise SystemExit(f"Profiles file {PROFILE_FILE} did not contain a JSON object")
+        message = f"Profiles file {PROFILE_FILE} did not contain a JSON object"
+        raise SystemExit(message)
 
     profiles = {k.lower(): v for k, v in profiles.items()}
     profile_name = args.profile.lower()
@@ -1446,17 +1476,24 @@ def main() -> None:
     entropy_bits = estimate_profile_definition_entropy(profile_def, order)
     entropy_label = classify_entropy(entropy_bits)
 
-    print(
-        f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level [{entropy_bits:.2f}] ({entropy_label})",
-    )
-
-    for _ in range(args.count):
-        if args.details:
+    if args.details:
+        rendered_passphrases: list[str] = []
+        for _ in range(args.count):
             context = build_generation_context(profile_def, order)
             print(format_generation_details(context))
             print()
-            print(context["rendered"])
-        else:
+            rendered_passphrases.append(context["rendered"])
+
+        print(
+            f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level [{entropy_bits:.2f}] ({entropy_label})",
+        )
+        for rendered_passphrase in rendered_passphrases:
+            print(rendered_passphrase)
+    else:
+        print(
+            f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level [{entropy_bits:.2f}] ({entropy_label})",
+        )
+        for _ in range(args.count):
             print(render_profile_definition(profile_def, order))
 
 

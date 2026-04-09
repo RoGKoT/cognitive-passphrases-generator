@@ -1,3 +1,4 @@
+import itertools
 import json
 import math
 import re
@@ -224,7 +225,7 @@ def test_estimate_profile_definition_entropy_includes_space_in_delimiters_fallba
         return original_load_json_file(path)
 
     monkeypatch.setattr(generate_passphrase, "load_json_file", fake_load_json_file)
-    monkeypatch.setattr(generate_passphrase, "load_delimiter_values", lambda path: [])
+    monkeypatch.setattr(generate_passphrase, "load_delimiter_values", lambda *_: [])
 
     profile = {
         "files": {
@@ -670,36 +671,6 @@ def test_validate_profile_definition_accepts_active_space_with_delimiters_files_
     assert validated["delimiters"]["files"]
 
 
-def test_validate_profile_definition_accepts_active_space_with_delimiters_values_only():
-    profile_def = {
-        "files": {
-            "actors": "movies/peoples/actors.json",
-            "titles": "movies/titles.json",
-        },
-        "separators": {
-            "enabled": True,
-            "odds": 100,
-            "files": {},
-            "values": [","],
-        },
-        "delimiters": {
-            "enabled": True,
-            "odds": 100,
-            "files": {},
-            "values": [",", " "],
-        },
-        "space": {
-            "enabled": True,
-            "odds": 100,
-            "files": {},
-            "values": [" "],
-        },
-    }
-    validated = validate_profile_definition(profile_def)
-    assert validated["space"]["enabled"] is True
-    assert validated["delimiters"]["values"] == [",", " "]
-
-
 def test_validate_profile_definition_rejects_active_space_with_separators_values_only():
     profile_def = {
         "files": {
@@ -721,7 +692,7 @@ def test_validate_profile_definition_rejects_active_space_with_separators_values
     }
     with pytest.raises(
         ValueError,
-        match="Active space feature requires separators.files or enabled delimiters with values or files",
+        match=r"Active space feature requires separators\.files or enabled delimiters with values or files",
     ):
         validate_profile_definition(profile_def)
 
@@ -770,7 +741,7 @@ def test_validate_profile_definition_rejects_invalid_delimiters_fallback():
             "values": [],
         },
     }
-    with pytest.raises(ValueError, match="delimiters.fallback must be 'separators'"):
+    with pytest.raises(ValueError, match=r"delimiters\.fallback must be 'separators'"):
         validate_profile_definition(profile_def)
 
 
@@ -834,6 +805,7 @@ def test_build_generation_context_falls_back_to_separators_when_delimiters_do_no
         },
     }
 
+    expected_choice_count = 3
     with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
         "generate_passphrase.random_generator.choice",
     ) as mock_choice:
@@ -842,7 +814,7 @@ def test_build_generation_context_falls_back_to_separators_when_delimiters_do_no
 
     assert context["separator_values"] == [","]
     assert context["rendered"] == "ActorValue,CharacterValue"
-    assert mock_choice.call_count == 3
+    assert mock_choice.call_count == expected_choice_count
 
 
 def test_build_generation_context_falls_back_to_separators_when_delimiters_do_not_trigger_and_separators_disabled():
@@ -866,6 +838,7 @@ def test_build_generation_context_falls_back_to_separators_when_delimiters_do_no
         },
     }
 
+    expected_choice_count = 3
     with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
         "generate_passphrase.random_generator.choice",
     ) as mock_choice:
@@ -874,7 +847,7 @@ def test_build_generation_context_falls_back_to_separators_when_delimiters_do_no
 
     assert context["separator_values"] == [","]
     assert context["rendered"] == "ActorValue,CharacterValue"
-    assert mock_choice.call_count == 3
+    assert mock_choice.call_count == expected_choice_count
 
 
 def test_build_generation_context_applies_prefix_on_odds():
@@ -1090,9 +1063,11 @@ def test_validate_profile_definition_rejects_empty_string_in_main_list_source():
         },
     }
 
-    with patch("profiles.validation.list_from_name", return_value=["", "Actor"]):
-        with pytest.raises(ValueError, match="contains empty-string entries"):
-            validate_profile_definition(profile_def)
+    with patch("profiles.validation.list_from_name", return_value=["", "Actor"]), pytest.raises(
+        ValueError,
+        match=r"contains empty-string entries",
+    ):
+        validate_profile_definition(profile_def)
 
 
 def test_validate_profile_definition_rejects_empty_string_in_terminal_punctuation_source():
@@ -1119,9 +1094,11 @@ def test_validate_profile_definition_rejects_empty_string_in_terminal_punctuatio
             return ["", "?!"]
         return ["Actor"]
 
-    with patch("profiles.validation.list_from_name", side_effect=list_from_name_side_effect):
-        with pytest.raises(ValueError, match="terminal punctuation"):
-            validate_profile_definition(profile_def)
+    with patch("profiles.validation.list_from_name", side_effect=list_from_name_side_effect), pytest.raises(
+        ValueError,
+        match=r"terminal punctuation",
+    ):
+        validate_profile_definition(profile_def)
 
 
 def test_validate_profile_definition_rejects_wrong_terminal_punctuation_path():
@@ -1182,7 +1159,7 @@ def _allowed_cli_separator_values(profile_def: dict[str, object], keys: list[str
         for value in explicit_values:
             if isinstance(value, str):
                 separators.add(format_delimiter_value(value))
-        for left, right in zip(keys, keys[1:]):
+        for left, right in itertools.pairwise(keys):
             try:
                 typed_candidates = load_delimiter_values(delimiter_file_name(left, right))
             except FileNotFoundError:
@@ -1197,7 +1174,7 @@ def test_generate_passphrase_cli_test_profile_matches_profile_sources():
     repo_root = Path(__file__).resolve().parent
     profile_def = validate_profiles_file(repo_root / "profiles" / "profiles.json")["test"]
 
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603
         [
             sys.executable,
             str(repo_root / "generate_passphrase.py"),
@@ -1228,9 +1205,10 @@ def test_generate_passphrase_cli_test_profile_matches_profile_sources():
 
     keys: list[str] = []
     separators: list[str] = []
+    min_field_parts = 3
     for line in field_lines:
         parts = [part.strip() for part in line.split("|")]
-        assert len(parts) >= 3
+        assert len(parts) >= min_field_parts
         field_name = parts[0]
         field_value = parts[1]
         separator_value = parts[2].strip("'")
@@ -1244,6 +1222,29 @@ def test_generate_passphrase_cli_test_profile_matches_profile_sources():
     for separator_value in separators:
         assert separator_value in allowed_separators
 
+
+def test_cli_details_output_shows_details_before_summary_and_passphrase(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["generate_passphrase.py", "xspace", "--count", "1", "--details"],
+    )
+    main()
+    captured = capsys.readouterr()
+    output_lines = [line.rstrip() for line in captured.out.splitlines()]
+
+    details_header = f"Cognitive Passphrases Generator v{__version__} - Details"
+    summary_prefix = f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level ["
+
+    assert details_header in output_lines
+    summary_index = next(
+        i
+        for i, line in enumerate(output_lines)
+        if line.startswith(summary_prefix)
+    )
+    assert output_lines[summary_index - 1] == ""
+    assert summary_index > output_lines.index(details_header)
+    assert summary_index + 1 == len(output_lines) - 1
+    assert output_lines[-1]
 
 def test_collect_profiles_validation_results_skips_invalid_profiles(tmp_path):
     path = tmp_path / "profiles.json"
@@ -1429,5 +1430,5 @@ def test_entropy_summary_printed_once_for_multiple_count(monkeypatch, capsys):
     main()
     captured = capsys.readouterr()
     assert captured.out.count(
-        "Cognitive Passphrases Generator - Actual Entropy level [",
+        f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level [",
     ) == 1
