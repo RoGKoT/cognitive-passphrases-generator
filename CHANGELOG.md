@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-04-09
+## [0.9.2] - 2026-04-09
+- Document repository structure and security guidance.
+- Add static documentation config for MkDocs.
+- Clarify CLI options and reserved future AI flags.
+
 - Document repository structure and security guidance.
 - Add static documentation config for MkDocs.
 - Clarify CLI options and reserved future AI flags.
