@@ -189,15 +189,287 @@ def load_all_separators() -> list[str]:
     raise FileNotFoundError(message)
 
 
-def normalize_separators(spec: Any) -> list[str]:
-    if isinstance(spec, str):
-        if spec == "all":
-            return load_all_separators()
-        message = "separators must be a list or 'all'"
-        raise ValueError(message)
+def load_delimiter_values(file_name: str) -> list[str]:
+    candidate_path = CATALOG_DIR / "common" / "delimiters" / file_name
+    if candidate_path.exists():
+        values = load_json_file(candidate_path)
+        if isinstance(values, list):
+            return values
+    message = f"Could not load delimiters from catalog/common/delimiters/{file_name}"
+    raise FileNotFoundError(message)
 
+
+def resolve_delimiter_type(key: str) -> str:
+    if ":" not in key:
+        return key
+    prefix, suffix = key.split(":", 1)
+    if prefix == "subject":
+        return "subject"
+    return suffix
+
+
+def delimiter_file_name(left_key: str, right_key: str) -> str:
+    left_type = resolve_delimiter_type(left_key)
+    right_type = resolve_delimiter_type(right_key)
+    return f"{left_type}-{right_type}.json"
+
+
+def select_supplemental_value(
+    values: list[str], odds: dict[str, Any] | None = None,
+) -> str:
+    if not values:
+        raise ValueError("Supplemental values list must not be empty")
+
+    odds = odds or {}
+    odds_space = odds.get("space")
+    if isinstance(odds_space, (int, float)) and 0 < odds_space <= 100:
+        space_values = [value for value in values if value == " "]
+        if space_values:
+            if random_generator.randrange(100) < int(odds_space):
+                return random_generator.choice(space_values)
+            non_space_values = [value for value in values if value != " "]
+            if non_space_values:
+                return random_generator.choice(non_space_values)
+    return random_generator.choice(values)
+
+
+def feature_triggers(feature_def: dict[str, Any]) -> bool:
+    if not isinstance(feature_def, dict):
+        return False
+    if not feature_def.get("enabled", False):
+        return False
+    odds = feature_def.get("odds", 0)
+    if not isinstance(odds, (int, float)) or odds <= 0:
+        return False
+    return random_generator.randrange(100) < int(odds)
+
+
+def build_feature_candidates(feature_def: dict[str, Any]) -> list[str]:
+    if not isinstance(feature_def, dict):
+        raise TypeError("Feature definition must be an object")
+
+    candidates: list[str] = []
+    file_sources = feature_def.get("files", {})
+    if not isinstance(file_sources, dict):
+        raise TypeError("Feature files must be an object")
+
+    for source in file_sources.values():
+        if not isinstance(source, str):
+            raise TypeError("Feature file references must be strings")
+        values = list_from_name(source)
+        if values is None:
+            raise ValueError(f"Unknown list token/path: '{source}'")
+        candidates.extend(str(value) for value in values)
+
+    explicit_values = feature_def.get("values", [])
+    if not isinstance(explicit_values, list):
+        raise TypeError("Feature values must be a list")
+    for value in explicit_values:
+        if not isinstance(value, str):
+            raise TypeError("Feature values must be strings")
+        candidates.append(value)
+
+    return candidates
+
+
+def build_feature_value(feature_def: dict[str, Any]) -> str:
+    if not feature_triggers(feature_def):
+        return ""
+    values = build_feature_candidates(feature_def)
+    if not values:
+        return ""
+    return str(random_generator.choice(values))
+
+
+def build_separator_candidates(profile_def: dict[str, Any]) -> list[str]:
+    candidates: list[str] = []
+    for feature_name in ("separators", "space"):
+        feature_def = profile_def.get(feature_name)
+        if isinstance(feature_def, dict) and feature_triggers(feature_def):
+            candidates.extend(build_feature_candidates(feature_def))
+    return candidates
+
+
+def format_delimiter_value(separator: str) -> str:
+    token = separator.strip()
+    if token == "":
+        return separator
+    if token.isspace():
+        return " "
+    if re.fullmatch(r"[^\w\s]+", token):
+        if token in {
+            ",",
+            ";",
+            ":",
+            ".",
+            "!",
+            "?",
+            "...",
+            "!!",
+            "!!!",
+            "?!",
+            "!?",
+            "??",
+            "???",
+        }:
+            return token + " "
+        return f" {token} "
+    return f" {token} "
+
+
+def build_delimiter_values(
+    keys: list[str],
+    odds: dict[str, Any] | None = None,
+    delimiter_feature: dict[str, Any] | None = None,
+) -> list[str]:
+    if len(keys) < 2:
+        return []
+
+    odds = odds or {}
+
+    explicit_values: list[str] = []
+    if isinstance(delimiter_feature, dict):
+        explicit_values = delimiter_feature.get("values", [])
+        if not isinstance(explicit_values, list):
+            raise TypeError("delimiters.values must be a list")
+        for value in explicit_values:
+            if not isinstance(value, str):
+                raise TypeError("delimiters.values must be strings")
+
+    separators: list[str] = []
+    for left, right in zip(keys, keys[1:]):
+        file_name = delimiter_file_name(left, right)
+        try:
+            typed_values = load_delimiter_values(file_name) or []
+        except FileNotFoundError:
+            typed_values = []
+
+        pair_candidates = [str(value) for value in explicit_values] + [
+            str(value) for value in typed_values
+        ]
+        if not pair_candidates:
+            return []
+        separators.append(
+            format_delimiter_value(select_supplemental_value(pair_candidates, odds)),
+        )
+    return separators
+
+
+def build_separator_values_for_profile(
+    profile_def: dict[str, Any],
+    keys: list[str],
+    order: str,
+    randomize: bool = False,
+) -> tuple[list[str], list[str], bool]:
+    delimiter_feature = profile_def.get("delimiters")
+    if isinstance(delimiter_feature, dict):
+        if feature_triggers(delimiter_feature):
+            delimiter_values = build_delimiter_values(
+                keys,
+                profile_def.get("odds", {}),
+                delimiter_feature,
+            )
+            if delimiter_values:
+                return delimiter_values, [], True
+            if delimiter_feature.get("fallback") == "separators":
+                separator_candidates = build_separator_candidates(profile_def)
+                return (
+                    build_separator_values(
+                        separator_candidates,
+                        max(len(keys) - 1, 0),
+                        order,
+                        randomize=False,
+                    ),
+                    separator_candidates,
+                    False,
+                )
+            return [], [], False
+
+        if delimiter_feature.get("fallback") == "separators":
+            separator_candidates = build_separator_candidates(profile_def)
+            return (
+                build_separator_values(
+                    separator_candidates,
+                    max(len(keys) - 1, 0),
+                    order,
+                    randomize=False,
+                ),
+                separator_candidates,
+                False,
+            )
+
+    separator_candidates = build_separator_candidates(profile_def)
+    return (
+        build_separator_values(
+            separator_candidates,
+            max(len(keys) - 1, 0),
+            order,
+            randomize=False,
+        ),
+        separator_candidates,
+        False,
+    )
+
+
+def is_terminal_punctuation_enabled(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "enabled"
+    return False
+
+
+def build_prefix_value(profile_def: dict[str, Any], odds: dict[str, Any] | None = None) -> str:
+    prefix_feature = profile_def.get("prefix")
+    if not isinstance(prefix_feature, dict):
+        legacy_prefix_source = profile_def.get("prefixes")
+        prefix_odds = (
+            odds.get("prefixes") if isinstance(odds, dict) and "prefixes" in odds else profile_def.get("odds", {}).get("prefixes", 0)
+        )
+        if isinstance(legacy_prefix_source, str):
+            prefix_feature = {
+                "enabled": True,
+                "odds": prefix_odds,
+                "files": {"prefixes": legacy_prefix_source},
+                "values": [],
+            }
+        elif isinstance(legacy_prefix_source, list):
+            prefix_feature = {
+                "enabled": True,
+                "odds": prefix_odds,
+                "files": {},
+                "values": legacy_prefix_source,
+            }
+        else:
+            return ""
+    return build_feature_value(prefix_feature).strip()
+
+
+def build_terminal_punctuation(
+    profile_def: dict[str, Any], odds: dict[str, Any] | None = None,
+) -> str:
+    terminal_feature = profile_def.get("terminal-punctuation")
+    if isinstance(terminal_feature, dict):
+        return build_feature_value(terminal_feature)
+    if not is_terminal_punctuation_enabled(terminal_feature):
+        return ""
+    terminal_odds = (
+        odds.get("terminal-punctuation")
+        if isinstance(odds, dict) and "terminal-punctuation" in odds
+        else profile_def.get("odds", {}).get("terminal-punctuation", 0)
+    )
+    terminal_feature = {
+        "enabled": True,
+        "odds": terminal_odds,
+        "files": {"terminal-punctuation": "common/terminal-punctuations.json"},
+        "values": [],
+    }
+    return build_feature_value(terminal_feature)
+
+
+def normalize_separators(spec: Any) -> list[str]:
     if not isinstance(spec, list):
-        message = "separators must be a list or 'all'"
+        message = "separators must be a list"
         raise TypeError(message)
 
     separators: list[str] = []
@@ -205,10 +477,7 @@ def normalize_separators(spec: Any) -> list[str]:
         if not isinstance(separator_value, str):
             message = "separators must contain strings only"
             raise TypeError(message)
-        if separator_value == "all":
-            separators.extend(load_all_separators())
-        else:
-            separators.append(separator_value)
+        separators.append(separator_value)
 
     unique: list[str] = []
     for separator in separators:
@@ -217,11 +486,26 @@ def normalize_separators(spec: Any) -> list[str]:
     return unique
 
 
-def build_separator_values(separators: list[str], count: int, order: str) -> list[str]:
+def normalize_separators_feature_spec(spec: Any) -> dict[str, Any]:
+    if isinstance(spec, list):
+        return {"enabled": True, "odds": 100, "files": {}, "values": spec}
+    if isinstance(spec, dict):
+        return spec
+    raise TypeError("separators must be an object or list")
+
+
+def build_separator_values(
+    separators: list[str],
+    count: int,
+    order: str,
+    randomize: bool = False,
+) -> list[str]:
     if not separators:
         return []
     if len(separators) == 1:
         return [separators[0]] * max(count, 0)
+    if randomize:
+        return [random_generator.choice(separators) for _ in range(max(count, 0))]
     return [separators[i % len(separators)] for i in range(max(count, 0))]
 
 
@@ -273,7 +557,7 @@ def list_from_name(list_name: str, language: str | None = None) -> list[str] | N
     if not stable_name.endswith(".json"):
         return None
 
-    candidate_paths = [
+    candidate_paths: list[Path] = [
         DATA_DIR / stable_name,
         DATA_DIR / "categories" / stable_name,
         CATALOG_DIR / stable_name,
@@ -429,7 +713,19 @@ def build_generation_context(
         raise TypeError(message)
 
     unsupported_keys = [
-        key for key in profile_def if key not in {"files", "separators"}
+        key
+        for key in profile_def
+        if key not in {
+            "files",
+            "separators",
+            "delimiters",
+            "prefix",
+            "prefixes",
+            "terminal-punctuation",
+            "space",
+            "odds",
+            "agents",
+        }
     ]
     if unsupported_keys:
         message = "Unsupported profile keys: " + ", ".join(
@@ -442,7 +738,10 @@ def build_generation_context(
         message = 'Profile object must contain "files" with at least one entry'
         raise ValueError(message)
 
-    separators = normalize_separators(profile_def.get("separators", []))
+    raw_separators_spec = profile_def.get("separators")
+    separators_spec = normalize_separators_feature_spec(raw_separators_spec)
+    profile_def["separators"] = separators_spec
+
     keys = order_profile_keys(list(files.keys()), order)
 
     requested_parts: list[str] = []
@@ -460,10 +759,11 @@ def build_generation_context(
         requested_parts.append(selected_value)
         values_by_key[token] = selected_value
 
-    separator_values = build_separator_values(
-        separators,
-        max(len(requested_parts) - 1, 0),
+    separator_values, separator_candidates, used_delimiters = build_separator_values_for_profile(
+        profile_def,
+        keys,
         order,
+        randomize=True,
     )
 
     rendered_parts: list[str] = []
@@ -474,31 +774,53 @@ def build_generation_context(
 
     strict_render = "".join(rendered_parts)
 
+    prefix_value = build_prefix_value(profile_def)
+    punctuation_value = build_terminal_punctuation(profile_def)
+
+    rendered = strict_render
+    if prefix_value:
+        rendered = f"{prefix_value} {rendered}"
+    if punctuation_value:
+        rendered = rendered.rstrip(" ") + punctuation_value
+
     base_entropy = estimate_selection_entropy(keys, files)
     order_entropy = estimate_order_entropy(keys, order)
-    separator_entropy = estimate_separator_entropy(
-        separators,
-        max(len(requested_parts) - 1, 0),
-        order,
+    separator_entropy = (
+        estimate_delimiter_entropy(keys)
+        if used_delimiters
+        else math.log2(len(separator_candidates)) if separator_candidates else 0.0
     )
-    actual_entropy = base_entropy + order_entropy + separator_entropy
+    prefix_entropy = estimate_prefix_entropy(profile_def)
+    punctuation_entropy = estimate_terminal_punctuation_entropy(profile_def)
+    actual_entropy = (
+        base_entropy
+        + order_entropy
+        + separator_entropy
+        + prefix_entropy
+        + punctuation_entropy
+    )
 
     return {
-        "rendered": strict_render,
+        "rendered": rendered,
         "profile_def": profile_def,
         "files": files,
         "selected_keys": keys,
         "profile_order": keys,
         "values_by_key": values_by_key,
-        "separators": separators,
+        "separators": separator_candidates,
+        "separators_spec": raw_separators_spec,
         "order": order,
         "fields_spec": "all",
         "requested_parts": requested_parts,
         "separator_values": separator_values,
         "strict_render": strict_render,
+        "prefix": prefix_value,
+        "terminal_punctuation": punctuation_value,
         "base_entropy": base_entropy,
         "order_entropy": order_entropy,
         "separator_entropy": separator_entropy,
+        "prefix_entropy": prefix_entropy,
+        "punctuation_entropy": punctuation_entropy,
         "actual_entropy": actual_entropy,
         "strict_entropy": estimate_profile_definition_entropy(profile_def),
     }
@@ -601,11 +923,44 @@ def estimate_order_entropy(selected_keys: list[str], order_spec: str) -> float:
     return math.log2(math.factorial(len(selected_keys)))
 
 
+def estimate_delimiter_entropy(keys: list[str]) -> float:
+    entropy = 0.0
+    for left, right in zip(keys, keys[1:]):
+        file_name = delimiter_file_name(left, right)
+        values = load_delimiter_values(file_name)
+        n = len(values) if hasattr(values, "__len__") else 1
+        if n > 0:
+            entropy += math.log2(n)
+    return entropy
+
+
+def estimate_prefix_entropy(profile_def: dict[str, Any]) -> float:
+    prefix_feature = profile_def.get("prefix")
+    if isinstance(prefix_feature, dict):
+        values = build_feature_candidates(prefix_feature)
+        n = len(values) if hasattr(values, "__len__") else 1
+        return math.log2(n) if n > 0 else 0.0
+    return 0.0
+
+
+def estimate_terminal_punctuation_entropy(profile_def: dict[str, Any]) -> float:
+    terminal_feature = profile_def.get("terminal-punctuation")
+    if isinstance(terminal_feature, dict) and terminal_feature.get("enabled", False):
+        values = build_feature_candidates(terminal_feature)
+        n = len(values) if hasattr(values, "__len__") else 1
+        return math.log2(n) if n > 0 else 0.0
+    return 0.0
+
+
 def estimate_separator_entropy(
     separators_spec: Any,
     count: int = 0,
     order_spec: str = "normal",
+    field_keys: list[str] | None = None,
 ) -> float:
+    if isinstance(separators_spec, dict):
+        return 0.0
+
     separators = normalize_separators(
         separators_spec if separators_spec is not None else [],
     )
@@ -641,7 +996,19 @@ def estimate_profile_definition_entropy(
         raise ValueError(message)
 
     unsupported_keys = [
-        key for key in profile_def if key not in {"files", "separators"}
+        key
+        for key in profile_def
+        if key not in {
+            "files",
+            "separators",
+            "delimiters",
+            "prefix",
+            "prefixes",
+            "terminal-punctuation",
+            "space",
+            "odds",
+            "agents",
+        }
     ]
     if unsupported_keys:
         message = "Unsupported profile keys: " + ", ".join(
@@ -668,11 +1035,22 @@ def estimate_profile_definition_entropy(
 
     entropy = sum(entropies.values())
     entropy += estimate_order_entropy(list(files.keys()), order)
-    entropy += estimate_separator_entropy(
-        profile_def.get("separators", []),
-        max(len(files) - 1, 0),
-        order,
-    )
+    delimiters_spec = profile_def.get("delimiters")
+    separators_spec = normalize_separators_feature_spec(profile_def.get("separators"))
+    if isinstance(delimiters_spec, dict) and delimiters_spec.get("enabled", False):
+        entropy += estimate_delimiter_entropy(list(files.keys()))
+    elif isinstance(separators_spec, dict):
+        separator_values: list[str] = []
+        for feature_name in ("separators", "space"):
+            feature_def = separators_spec if feature_name == "separators" else profile_def.get(feature_name)
+            if isinstance(feature_def, dict) and feature_def.get("enabled", False):
+                separator_values.extend(build_feature_candidates(feature_def))
+        if separator_values:
+            entropy += math.log2(len(separator_values))
+    else:
+        raise TypeError("separators must be an object")
+    entropy += estimate_prefix_entropy(profile_def)
+    entropy += estimate_terminal_punctuation_entropy(profile_def)
     return entropy
 
 
@@ -711,10 +1089,11 @@ def build_variation_context_from_saved_selection(
         keys = order_profile_keys(list(files.keys()), order)
 
     requested_parts = [values_by_key[key] for key in keys]
-    separator_values = build_separator_values(
-        separators,
-        max(len(requested_parts) - 1, 0),
+    separator_values, separator_candidates, used_delimiters = build_separator_values_for_profile(
+        profile_def,
+        keys,
         order,
+        randomize=True,
     )
 
     rendered_parts: list[str] = []
@@ -724,17 +1103,33 @@ def build_variation_context_from_saved_selection(
             rendered_parts.append(separator_values[i])
 
     strict_render = "".join(rendered_parts)
+    rendered = strict_render
+    prefix_value = base_context.get("prefix", "")
+    punctuation_value = base_context.get("terminal_punctuation", "")
+    if prefix_value:
+        rendered = f"{prefix_value} {rendered}"
+    if punctuation_value:
+        rendered = rendered.rstrip(" ") + punctuation_value
+
     base_entropy = estimate_selection_entropy(list(files.keys()), files)
     order_entropy = estimate_order_entropy(keys, order)
-    separator_entropy = estimate_separator_entropy(
-        separators,
-        max(len(requested_parts) - 1, 0),
-        order,
+    separator_entropy = (
+        estimate_delimiter_entropy(keys)
+        if used_delimiters
+        else math.log2(len(separator_candidates)) if separator_candidates else 0.0
     )
-    actual_entropy = base_entropy + order_entropy + separator_entropy
+    prefix_entropy = estimate_prefix_entropy(profile_def)
+    punctuation_entropy = estimate_terminal_punctuation_entropy(profile_def)
+    actual_entropy = (
+        base_entropy
+        + order_entropy
+        + separator_entropy
+        + prefix_entropy
+        + punctuation_entropy
+    )
 
     return {
-        "rendered": strict_render,
+        "rendered": rendered,
         "profile_def": profile_def,
         "files": files,
         "selected_keys": keys,
@@ -746,9 +1141,13 @@ def build_variation_context_from_saved_selection(
         "requested_parts": requested_parts,
         "separator_values": separator_values,
         "strict_render": strict_render,
+        "prefix": prefix_value,
+        "terminal_punctuation": punctuation_value,
         "base_entropy": base_entropy,
         "order_entropy": order_entropy,
         "separator_entropy": separator_entropy,
+        "prefix_entropy": prefix_entropy,
+        "punctuation_entropy": punctuation_entropy,
         "actual_entropy": actual_entropy,
         "strict_entropy": estimate_profile_definition_entropy(profile_def),
     }
@@ -756,11 +1155,15 @@ def build_variation_context_from_saved_selection(
 
 def format_generation_details(context: dict[str, Any]) -> str:
     profile = context.get("profile_def", {})
-    separators_spec = profile.get("separators", context["separators"])
+    separators_spec = context.get("separators_spec", profile.get("separators", context["separators"]))
+    prefix_value = context.get("prefix", "")
+    punctuation_value = context.get("terminal_punctuation", "")
     lines = [
         "Cognitive Passphrases Generator v0.6.1 - Details",
         f"  order: {context['order']}",
         f"  separators: {separators_spec}",
+        f"  prefix: {prefix_value if prefix_value else 'none'}",
+        f"  terminal punctuation: {punctuation_value if punctuation_value else 'none'}",
         "",
         f"  {'Field':<10} | {'Value':<34} | Separator",
         f"  {'-' * 10} | {'-' * 34} | {'-' * 9}",
@@ -864,11 +1267,34 @@ def main() -> None:
     if args.profile is None:
         parser.error("the following arguments are required: profile")
 
-    profiles = {k.lower(): v for k, v in load_profiles(PROFILE_FILE).items()}
+    from profiles import collect_profiles_validation_results
+
+    try:
+        raw_profiles, invalid_profiles = collect_profiles_validation_results(PROFILE_FILE)
+    except (ValueError, FileNotFoundError, TypeError) as ex:
+        message = f"Validation failed while scanning profiles file: {ex}"
+        raise SystemExit(message) from ex
+
+    profiles = {k.lower(): v for k, v in raw_profiles.items()}
     profile_name = args.profile.lower()
     if profile_name not in profiles:
         message = f'Error: profile "{args.profile}" not found in {PROFILE_FILE}'
         raise SystemExit(message)
+
+    if invalid_profiles:
+        print("Warning: some profiles in profiles.json are invalid and will be skipped:")
+        for invalid_name, error_text in invalid_profiles.items():
+            print(f"  - {invalid_name}: {error_text}")
+
+        if sys.stdin.isatty():
+            answer = input("Continue using only validated profiles? [y/N] ").strip().lower()
+            if answer not in {"y", "yes"}:
+                raise SystemExit("Aborted due to invalid profile definitions.")
+        else:
+            raise SystemExit(
+                "Profiles file contains invalid definitions. Re-run interactively to confirm continuing or fix the listed errors.",
+            )
+
     profile_def = profiles[profile_name]
 
     order = "normal"
@@ -879,14 +1305,6 @@ def main() -> None:
         print(
             "Warning: --ai is reserved for future AI integration and has no effect at this time.",
         )
-
-    from profiles import validate_profile_definition
-
-    try:
-        validate_profile_definition(profile_def)
-    except (ValueError, FileNotFoundError, TypeError) as ex:
-        message = f"Validation failed: {ex}"
-        raise SystemExit(message) from ex
 
     entropy_bits = estimate_profile_definition_entropy(profile_def, order)
     entropy_label = classify_entropy(entropy_bits)

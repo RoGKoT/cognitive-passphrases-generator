@@ -75,7 +75,18 @@ Profiles are defined in `profiles/profiles.json` as a JSON object.
 Each profile currently supports these keys:
 
 - `files`: object mapping fields to token sources, or a source reference string such as `sources.json#movies`
-- `separators`: a list of separator strings, or the value `all` to load `catalog/common/separators.json`
+- `separators`: object describing separator generation behavior
+  - required
+  - keys: `enabled`, `odds`, `files`, `values`
+  - `files` is an object mapping related separator tokens to list sources
+  - `values` is a list of explicit separator strings appended to file-derived candidates
+- `prefix`: optional object describing prefix generation behavior
+  - same structure as `separators`
+- `terminal-punctuation`: optional object describing terminal punctuation generation behavior
+  - same structure as `separators`
+- `space`: optional object describing space generation behavior
+  - same structure as `separators`
+- `agents`: metadata object for future AI generation support
 
 Example profile:
 
@@ -83,11 +94,45 @@ Example profile:
 {
   "xspace": {
     "files": {
-      "actors": "movies/peoples/actors.json",
-      "titles": "movies/titles.json"
+      "subject:hero": "movies/peoples/heroes.json",
+      "complement:location": "movies/titles.json"
     },
-    "separators": [" ", "-"]
+    "separators": {
+      "enabled": true,
+      "odds": 100,
+      "files": {},
+      "values": [" ", "@"]
+    },
+    "prefix": {
+      "enabled": true,
+      "odds": 50,
+      "files": {
+        "titles": "common/prefixes/subjects/titles.json"
+      },
+      "values": []
+    },
+    "terminal-punctuation": {
+      "enabled": true,
+      "odds": 75,
+      "files": {
+        "terminal-punctuation": "common/terminal-punctuations.json"
+      },
+      "values": []
+    },
+    "space": {
+      "enabled": true,
+      "odds": 25,
+      "files": {},
+      "values": [" "]
+    },
+    "agents": {
+      "api": {
+        "name": "",
+        "version": ""
+      }
+    }
   }
+
 }
 ```
 

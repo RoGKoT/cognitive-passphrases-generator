@@ -1,3 +1,4 @@
+import json
 import math
 import re
 from pathlib import Path
@@ -7,9 +8,14 @@ import pytest
 from hypothesis import given, strategies as st
 
 from generate_passphrase import (
+    build_delimiter_values,
     build_generation_context,
+    build_prefix_value,
+    build_separator_values,
+    build_terminal_punctuation,
     build_variation_context_from_saved_selection,
     estimate_expression_entropy,
+    normalize_separators,
     estimate_parts_entropy,
     estimate_profile_definition_entropy,
     estimate_template_entropy,
@@ -17,9 +23,14 @@ from generate_passphrase import (
     list_from_name,
     load_profiles,
     render_profile_definition,
+    select_supplemental_value,
     main,
 )
-from profiles import validate_profile_definition, validate_profiles_file
+from profiles import (
+    collect_profiles_validation_results,
+    validate_profile_definition,
+    validate_profiles_file,
+)
 
 EXPECTED_DETAIL_MODE_COUNT = 2
 
@@ -137,18 +148,18 @@ def test_render_profile_definition_preserves_profile_key_order():
             "characters": "movies/peoples/characters.json",
             "heroes": "movies/peoples/heroes.json",
             "locations": "movies/titles-as/locations.json",
-            "actions": "movies/titles-as/verbs.json",
+            "actions": "movies/titles-as/actions.json",
             "timestamps": "movies/titles-as/timestamps.json",
         },
-        "separators": ["-"],
+        "separators": ["@"],
     }
     rendered = render_profile_definition(profile_def)
-    parts = rendered.split("-")
+    parts = rendered.split("@")
     assert parts[0] in list_from_name("movies/peoples/actors.json")
     assert parts[1] in list_from_name("movies/peoples/characters.json")
     assert parts[2] in list_from_name("movies/peoples/heroes.json")
     assert parts[3] in list_from_name("movies/titles-as/locations.json")
-    assert parts[4] in list_from_name("movies/titles-as/verbs.json")
+    assert parts[4] in list_from_name("movies/titles-as/actions.json")
     assert parts[5] in list_from_name("movies/titles-as/timestamps.json")
 
 
@@ -255,23 +266,44 @@ def test_render_profile_definition_with_file_object_sets_separators():
             "present": "common/timestamps/present.json",
             "future": "common/timestamps/future.json",
         },
-        "separators": ["-", "@"],
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
     }
     rendered = render_profile_definition(profile_def)
     assert isinstance(rendered, str)
-    assert "-" in rendered
-    assert "@" in rendered
+    assert "|" not in rendered
+    assert ";" not in rendered
 
 
 def test_render_profile_definition_with_sources_json_reference():
-    profile_def = {"files": "sources.json#movies", "separators": ["@", "-"]}
+    profile_def = {
+        "files": "sources.json#movies",
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+    }
     rendered = render_profile_definition(profile_def)
     assert isinstance(rendered, str)
     assert len(rendered) > 0
 
 
 def test_render_profile_definition_with_separators_all():
-    profile_def = {"files": "sources.json#movies", "separators": "all"}
+    profile_def = {
+        "files": "sources.json#movies",
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+    }
     rendered = render_profile_definition(profile_def)
     assert isinstance(rendered, str)
     assert len(rendered) > 0
@@ -280,9 +312,97 @@ def test_render_profile_definition_with_separators_all():
 
 
 def test_validate_profile_definition_with_sources_json_reference():
-    profile_def = {"files": "sources.json#movies", "separators": ["@", "-"]}
+    profile_def = {
+        "files": "sources.json#movies",
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+    }
     validated = validate_profile_definition(profile_def)
-    assert isinstance(validated["separators"], list)
+    assert isinstance(validated["separators"], dict)
+
+
+def test_validate_profile_definition_accepts_prefix_and_terminal_punctuation_and_agents():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "prefix": {
+            "enabled": True,
+            "odds": 50,
+            "files": {"titles": "common/prefixes/subjects/titles.json"},
+            "values": [],
+        },
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 50,
+            "files": {"terminal-punctuation": "common/terminal-punctuations.json"},
+            "values": [],
+        },
+        "agents": {"api": {"name": "example", "version": "1.0"}},
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["prefix"]["files"]["titles"] == profile_def["prefix"]["files"]["titles"]
+    assert validated["terminal-punctuation"]["enabled"] is True
+    assert validated["agents"]["api"]["name"] == "example"
+
+
+def test_validate_profile_definition_accepts_delimiters_with_fallback():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["delimiters"]["fallback"] == "separators"
+
+
+def test_validate_profile_definition_rejects_invalid_delimiters_fallback():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "invalid",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+    with pytest.raises(ValueError, match="delimiters.fallback must be 'separators'"):
+        validate_profile_definition(profile_def)
 
 
 def test_validate_profile_definition_rejects_unsupported_keys():
@@ -291,10 +411,432 @@ def test_validate_profile_definition_rejects_unsupported_keys():
         validate_profile_definition(profile_def)
 
 
+def test_build_generation_context_with_delimiters_and_typed_fields():
+    profile_def = {
+        "files": {
+            "subject:hero": "movies/peoples/heroes.json",
+            "complement:location": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": False,
+            "odds": 100,
+            "files": {},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.choice") as mock_choice:
+        mock_choice.side_effect = [
+            "HeroValue",
+            "LocationValue",
+            "at",
+        ]
+        context = build_generation_context(profile_def)
+
+    assert context["separator_values"] == [" at "]
+    assert context["rendered"] == "HeroValue at LocationValue"
+
+
+def test_build_generation_context_falls_back_to_separators_when_delimiters_do_not_trigger():
+    profile_def = {
+        "files": {
+            "subject:actor": "movies/peoples/actors.json",
+            "subject:character": "movies/peoples/characters.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [","],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 0,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "CharacterValue"]
+        context = build_generation_context(profile_def)
+
+    assert context["separator_values"] == [","]
+    assert context["rendered"] == "ActorValue,CharacterValue"
+
+
+def test_build_generation_context_applies_prefix_on_odds():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": ["-"],
+        "prefixes": "common/prefixes/subjects/titles.json",
+        "odds": {"prefixes": 100},
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "TitleValue", "Dr."]
+        context = build_generation_context(profile_def)
+
+    assert context["prefix"] == "Dr."
+    assert context["rendered"].startswith("Dr. ")
+
+
+def test_build_generation_context_appends_terminal_punctuation_on_odds():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": ["-"],
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 100,
+            "files": {
+                "terminal-punctuation": "common/terminal-punctuations.json",
+            },
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "TitleValue", "?!"]
+        context = build_generation_context(profile_def)
+
+    assert context["terminal_punctuation"] == "?!"
+    assert context["rendered"].endswith("?!")
+
+
+def test_build_generation_context_does_not_append_terminal_punctuation_when_disabled():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": ["-"],
+        "terminal-punctuation": {
+            "enabled": False,
+            "odds": 100,
+            "files": {
+                "terminal-punctuation": "common/terminal-punctuations.json",
+            },
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "TitleValue"]
+        context = build_generation_context(profile_def)
+
+    assert context["terminal_punctuation"] == ""
+    assert not context["rendered"].endswith("?")
+    assert not context["rendered"].endswith("!")
+
+
+def test_build_generation_context_appends_terminal_punctuation_when_enabled_boolean_true():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": ["-"],
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 100,
+            "files": {
+                "terminal-punctuation": "common/terminal-punctuations.json",
+            },
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "TitleValue", "?!"]
+        context = build_generation_context(profile_def)
+
+    assert context["terminal_punctuation"] == "?!"
+    assert context["rendered"].endswith("?!")
+
+
+def test_select_supplemental_value_respects_space_odds():
+    values = [" ", "at", "in"]
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = [" "]
+        result = select_supplemental_value(values, {"space": 100})
+
+    assert result == " "
+
+
+def test_build_delimiter_values_formats_common_tokens():
+    with patch("generate_passphrase.load_delimiter_values") as mock_load, patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_load.return_value = [",", "and", "@"]
+        mock_choice.side_effect = [",", "and"]
+        values = build_delimiter_values(["subject:actor", "subject:character", "verb:action"], {"space": 0})
+
+    assert values == [", ", " and "]
+    mock_load.assert_any_call("subject-subject.json")
+    mock_load.assert_any_call("subject-action.json")
+
+
+def test_build_separator_values_preserves_explicit_separators():
+    values = build_separator_values([",", "and"], 2, "normal")
+    assert values == [",", "and"]
+
+
+def test_build_separator_values_preserves_all_separators():
+    separators = normalize_separators([",", "and"])
+    values = build_separator_values(separators, 2, "normal")
+    assert values == [",", "and"]
+
+
+def test_normalize_separators_requires_list():
+    with pytest.raises(TypeError, match="separators must be a list"):
+        normalize_separators("all")
+
+
+def test_build_separator_values_randomizes_candidate_separators():
+    with patch("generate_passphrase.random_generator.choice") as mock_choice:
+        mock_choice.side_effect = ["@", "#"]
+        values = build_separator_values(["@", "#"], 2, "normal", randomize=True)
+
+    assert values == ["@", "#"]
+
+
+def test_render_profile_definition_preserves_explicit_separators():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": [","],
+    }
+    rendered = render_profile_definition(profile_def)
+    assert "," in rendered
+    assert ", " not in rendered
+
+
+def test_build_delimiter_values_uses_subject_subject_file():
+    with patch("generate_passphrase.load_delimiter_values") as mock_load:
+        mock_load.return_value = [" ", "and"]
+        values = build_delimiter_values(["subject:actor", "subject:character"], {"space": 100})
+
+    assert values == [" "]
+    mock_load.assert_called_once_with("subject-subject.json")
+
+
+def test_build_prefix_value_obeys_odds():
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.return_value = "Dr."
+        prefix = build_prefix_value(
+            {"prefixes": "common/prefixes/subjects/titles.json"},
+            {"prefixes": 100},
+        )
+
+    assert prefix == "Dr."
+
+
+def test_build_terminal_punctuation_does_not_end_with_space():
+    profile_def = {
+        "terminal-punctuation": "enabled",
+        "odds": {"terminal-punctuation": 100},
+    }
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.return_value = "?!"
+        punctuation = build_terminal_punctuation(profile_def, {"terminal-punctuation": 100})
+
+    assert punctuation == "?!"
+
+
+def test_validate_profile_definition_rejects_empty_string_in_main_list_source():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+    }
+
+    with patch("profiles.validation.list_from_name", return_value=["", "Actor"]):
+        with pytest.raises(ValueError, match="contains empty-string entries"):
+            validate_profile_definition(profile_def)
+
+
+def test_validate_profile_definition_rejects_empty_string_in_terminal_punctuation_source():
+    profile_def = {
+        "files": {
+            "punctuation": "common/terminal-punctuations.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"terminal-punctuation": "common/terminal-punctuations.json"},
+            "values": [],
+        },
+    }
+
+    def list_from_name_side_effect(source):
+        if source == "common/terminal-punctuations.json":
+            return ["", "?!"]
+        return ["Actor"]
+
+    with patch("profiles.validation.list_from_name", side_effect=list_from_name_side_effect):
+        with pytest.raises(ValueError, match="terminal punctuation"):
+            validate_profile_definition(profile_def)
+
+
+def test_validate_profile_definition_rejects_wrong_terminal_punctuation_path():
+    profile_def = {
+        "files": {
+            "punctuation": "common/terminal-punctuation.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"terminal-punctuation": "common/terminal-punctuation.json"},
+            "values": [],
+        },
+    }
+
+    with pytest.raises(ValueError, match="Unknown list token/path"):
+        validate_profile_definition(profile_def)
+
+
+def test_validate_profile_definition_rejects_missing_list_file():
+    profile_def = {
+        "files": {
+            "subject": "common/this-file-does-not-exist.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+
+    with pytest.raises(ValueError, match="Unknown list token/path"):
+        validate_profile_definition(profile_def)
+
+
 def test_validate_profiles_file():
     validated = validate_profiles_file(Path("profiles") / "profiles.json")
-    assert "xspace" in validated
+    assert "example" in validated
     assert "movies" in validated
+
+
+def test_collect_profiles_validation_results_skips_invalid_profiles(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text(
+        json.dumps(
+            {
+                "valid": {
+                    "files": {
+                        "subject:hero": "movies/peoples/heroes.json",
+                    },
+                    "separators": {
+                        "enabled": True,
+                        "odds": 100,
+                        "files": {},
+                        "values": [" "],
+                    },
+                },
+                "invalid": {
+                    "files": {},
+                    "separators": {
+                        "enabled": True,
+                        "odds": 100,
+                        "files": {},
+                        "values": [" "],
+                    },
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    validated, errors = collect_profiles_validation_results(path)
+    assert "valid" in validated
+    assert "invalid" not in validated
+    assert "invalid" in errors
+    assert "files" in errors["invalid"]
+
+
+def test_validate_profiles_file_aggregates_invalid_profiles(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text(
+        json.dumps(
+            {
+                "valid": {
+                    "files": {
+                        "subject:hero": "movies/peoples/heroes.json",
+                    },
+                    "separators": {
+                        "enabled": True,
+                        "odds": 100,
+                        "files": {},
+                        "values": [" "],
+                    },
+                },
+                "invalid": {
+                    "files": {},
+                    "separators": {
+                        "enabled": True,
+                        "odds": 100,
+                        "files": {},
+                        "values": [" "],
+                    },
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Profiles file contains invalid profile definitions"):
+        validate_profiles_file(path)
 
 
 def test_list_from_name_supports_leading_slash():

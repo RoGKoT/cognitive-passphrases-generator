@@ -1,19 +1,116 @@
 {
   "example": {
-    "files": "sources.json#example",
-    "separators": [" ", " "]
+    "files": {
+      "subject:peoples": "movies/peoples/*",
+      "verb:action": "movies/titles-as/actions.json",
+      "complement:location": "movies/titles-as/locations.json"
+    },
+    "separators":{
+      "enabled": true,
+      "odds": 100,
+      "files": {},
+      "values": [" ","@"]
+    },
+    "prefix": {
+      "enabled": true,
+      "odds": 50,
+      "files": {
+        "titles":"common/prefixes/subjects/*"
+      },
+      "values": []  
+    },
+    "terminal-punctuation": {
+      "enabled": false,
+      "odds": 100,
+      "files": {
+        "terminal-punctuation": "common/terminal-punctuations.json"
+      },
+      "values": []
+    },
+    "space": {
+      "enabled": true,
+      "odds": 41,
+      "files": {},
+      "values": [" "]
+    }
   },
   "movies": {
-    "files": "sources.json#movies",
-    "separators": [", ", " and ", "@",">"," "]
+    "files": {
+      "subject:actor":"movies/peoples/actors.json",
+      "subject:character":"movies/peoples/characters.json",
+      "subject:hero":"movies/peoples/heroes.json",
+      "complement:location": "movies/titles-as/locations.json",
+      "verb:action": "movies/titles-as/actions.json",
+      "complement:timestamp": "movies/titles-as/timestamps.json"
+    },
+    "separators":{
+      "enabled": false,
+      "odds": 100,
+      "files": {
+        "separators": "common/separators.json"
+      },
+      "values": []
+    },
+    "delimiters":{
+      "enabled": true,
+      "odds": 100,
+      "fallback": "separators",
+      "files": {
+        "delimiters": "common/delimiters/*"
+      },
+      "values": []
+    },
+    "prefix": {
+      "enabled": true,
+      "odds": 20,
+      "files": {
+        "titles":"common/prefixes/subjects/titles.json"
+      },
+      "values": []  
+    },
+    "terminal-punctuation": {
+      "enabled": true,
+      "odds": 100,
+      "files": {
+        "terminal-punctuation": "common/terminal-punctuations.json"
+      },
+      "values": []
+    },
+    "space": {
+      "enabled": true,
+      "odds": 100,
+      "files": {},
+      "values": [" "]
+    }
   },
   "xspace": {
     "files": {
-      "actions": "movies/titles-as/verbs.json",
-      "heroes": "movies/peoples/heroes/*",
-      "titles": "movies/titles.json",
-      "timestamps": "movies/titles-as/timestamps.json"
+      "subject:actor": "movies/peoples/actors.json",
+      "complement:location": "movies/titles-as/locations.json"
     },
-    "separators": ["-", "@", "."]
+    "separators": {
+      "enabled": true,
+      "odds": 100,
+      "files": {"separators": "common/separators.json"},
+      "values": []
+    },
+    "prefix": {
+      "enabled": false,
+      "odds": 0,
+      "files": {},
+      "values": []
+    },
+    "terminal-punctuation": {
+      "enabled": false,
+      "odds": 0,
+      "files": {},
+      "values": []
+    },
+    "space": {
+      "enabled": false,
+      "odds": 0,
+      "files": {},
+      "values": []
+    }
   }
 }

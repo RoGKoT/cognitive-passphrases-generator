@@ -1,0 +1,12 @@
+{
+  "movies": {
+    "files": {
+      "subject:actor": "movies/peoples/actors.json",
+      "subject:character": "movies/peoples/characters.json",
+      "subject:hero": "movies/peoples/heroes.json",
+      "complement:location": "movies/titles-as/locations.json",
+      "verb:action": "movies/titles-as/actions.json",
+      "complement:timestamp": "movies/titles-as/timestamps.json"
+    }
+  }
+}

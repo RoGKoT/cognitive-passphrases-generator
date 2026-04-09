@@ -1,6 +1,11 @@
 "name": "profile name" ex: "example",
 "files": "source file and id of the files to be used for fields values", ex: "sources.json#example",
-"separators": "list of separators to use between fields values", ex: "[',', ';', '|']"
+"separators": "list of separators to use between fields values, or 'all' to load common separators, or 'delimiters' to use typed delimiter files",
+"separators.note": "explicit separators and separators loaded via 'all' are preserved exactly; only 'delimiters' are formatted with padding spaces",
+"prefixes": "optional string reference to a prefix list",
+"terminal-punctuation": "set to 'enabled' or true to allow terminal punctuation selection",
+"odds": "optional object of percentage weights for space, prefixes, and terminal-punctuation",
+"agents": "optional metadata object for future AI generation support"
 
 It is required to use all fields at least once in the sentence.
 Between each field, a separator must be used.

@@ -1,0 +1,4 @@
+
+ bâtir des tests beaucoup plus complet...
+ vérifier que chaque génération respecte tous les paramètres et que les résulats proviennent bien du fichier source spécifié, ne rien inventer ou présumer, utliser seulemt la SSOT (fichiers, de profil, champs, etc.) pour valider
+ avec trace de la validation... choix, résultats, etc. dans un fichier validate-generation.log via --validate-passphrase

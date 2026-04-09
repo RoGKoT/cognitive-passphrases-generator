@@ -35,7 +35,23 @@ Current profile keys:
   - either a JSON object with field-to-source mappings, or a source reference string such as `sources.json#movies`.
 - `separators`:
   - required.
-  - either `all` or a list of strings.
+  - object with keys:
+    - `enabled`: boolean
+    - `odds`: integer 0-100
+    - `files`: object mapping separator keys to source paths
+    - `values`: list of explicit separator strings
+- `prefix`:
+  - optional.
+  - object with keys: `enabled`, `odds`, `files`, `values`.
+- `terminal-punctuation`:
+  - optional.
+  - object with keys: `enabled`, `odds`, `files`, `values`.
+- `space`:
+  - optional.
+  - object with keys: `enabled`, `odds`, `files`, `values`.
+- `agents`:
+  - optional.
+  - metadata describing future AI generation agents.
 
 ### Supported `files` sources
 
@@ -44,8 +60,9 @@ Current profile keys:
 
 ### Separator rules
 
-- `separators: all` loads the list from `catalog/common/separators.json`
-- explicit lists are preserved exactly
+- `separators` must be an object in the new schema.
+- Explicit `values` are preserved exactly as written.
+- `files` sources load additional separator candidates from the catalog.
 
 ## CLI options
 
