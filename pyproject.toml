@@ -1,6 +1,6 @@
 [project]
 name = "cognitive-passphrases-generator"
-version = "0.9.2"
+version = "0.9.3"
 description = "Cognitive Passphrases Generator using profiles and JSON catalogs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
 ignore = ["E501"]  # Line too long, handled by formatter
 extend-ignore = ["C901", "PLR0911", "PLR0912", "PLR0915", "S105"]
