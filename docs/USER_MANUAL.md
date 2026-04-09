@@ -26,6 +26,18 @@ python generate_passphrase.py <profile> --details
 
 6. The generator validates profiles automatically before rendering.
 
+## Version management
+
+The CLI version is read at runtime from `pyproject.toml`, so the tool reports the current package version automatically.
+
+To keep `pyproject.toml` synchronized with Git tags, configure hooks with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This enables automatic version updates when switching branches or merging tagged commits.
+
 ## Profile structure
 
 Current profile keys:

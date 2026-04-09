@@ -1,6 +1,8 @@
 import json
 import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +17,10 @@ from generate_passphrase import (
     build_separator_values,
     build_terminal_punctuation,
     build_variation_context_from_saved_selection,
+    build_separator_candidates,
+    delimiter_file_name,
+    format_delimiter_value,
+    load_delimiter_values,
     estimate_expression_entropy,
     normalize_separators,
     estimate_parts_entropy,
@@ -26,6 +32,7 @@ from generate_passphrase import (
     load_profiles,
     render_profile_definition,
     select_supplemental_value,
+    __version__,
     main,
 )
 from profiles import (
@@ -1161,6 +1168,81 @@ def test_validate_profiles_file():
     validated = validate_profiles_file(Path("profiles") / "profiles.json")
     assert "example" in validated
     assert "movies" in validated
+
+
+def test_version_comes_from_pyproject():
+    assert __version__ == "0.9.0"
+
+
+def _allowed_cli_separator_values(profile_def: dict[str, object], keys: list[str]) -> set[str]:
+    separators = set(build_separator_candidates(profile_def, ignore_disabled_separators=True))
+    delimiter_feature = profile_def.get("delimiters")
+    if isinstance(delimiter_feature, dict):
+        explicit_values = delimiter_feature.get("values", [])
+        for value in explicit_values:
+            if isinstance(value, str):
+                separators.add(format_delimiter_value(value))
+        for left, right in zip(keys, keys[1:]):
+            try:
+                typed_candidates = load_delimiter_values(delimiter_file_name(left, right))
+            except FileNotFoundError:
+                typed_candidates = []
+            for value in typed_candidates:
+                if isinstance(value, str):
+                    separators.add(format_delimiter_value(value))
+    return separators
+
+
+def test_generate_passphrase_cli_test_profile_matches_profile_sources():
+    repo_root = Path(__file__).resolve().parent
+    profile_def = validate_profiles_file(repo_root / "profiles" / "profiles.json")["test"]
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "generate_passphrase.py"),
+            "test",
+            "--count",
+            "1",
+            "--details",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    output_lines = [line.rstrip() for line in result.stdout.splitlines()]
+    field_lines = []
+    for line in output_lines:
+        if "|" not in line:
+            continue
+        left = line.split("|", 1)[0].strip()
+        if not left or left in {"Field", "output", "normal", "random"}:
+            continue
+        if set(left) <= {"-"}:
+            continue
+        field_lines.append(line)
+
+    assert field_lines, "Expected field details in CLI output"
+
+    keys: list[str] = []
+    separators: list[str] = []
+    for line in field_lines:
+        parts = [part.strip() for part in line.split("|")]
+        assert len(parts) >= 3
+        field_name = parts[0]
+        field_value = parts[1]
+        separator_value = parts[2].strip("'")
+
+        keys.append(field_name)
+        assert field_value in list_from_name(profile_def["files"][field_name])
+        if separator_value:
+            separators.append(separator_value)
+
+    allowed_separators = _allowed_cli_separator_values(profile_def, keys)
+    for separator_value in separators:
+        assert separator_value in allowed_separators
 
 
 def test_collect_profiles_validation_results_skips_invalid_profiles(tmp_path):

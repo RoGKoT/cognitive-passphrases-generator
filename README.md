@@ -60,6 +60,15 @@ Supported options:
 - `--random`: use random field order instead of the default normal order
 
 Validation is performed automatically before passphrase rendering.
+- `validate_generation.py --profile test --count 10 --log-process`: validate generated passphrases against the `test` profile and print selection provenance.
+
+Version management
+- The runtime version is read from `pyproject.toml` and used by `generate_passphrase.py` and `validate_generation.py`.
+- To keep versions synchronized with Git tags, configure hooks with:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 Reserved future flags:
 

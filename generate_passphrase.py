@@ -62,6 +62,37 @@ def load_paths_env(path: Path) -> dict[str, str]:
 _path_vars = load_paths_env(DATA_DIR / "paths.env")
 PROFILE_DIR = Path(_path_vars.get("PROFILES", DATA_DIR / "profiles"))
 PROFILE_FILE = PROFILE_DIR / "profiles.json"
+PROJECT_FILE = DATA_DIR / "pyproject.toml"
+
+
+def load_project_version(project_file: Path) -> str:
+    try:
+        raw_text = project_file.read_text(encoding="utf-8")
+    except OSError:
+        return "0.0.0"
+
+    try:
+        import tomllib
+
+        data = tomllib.loads(raw_text)
+        project = data.get("project")
+        if isinstance(project, dict):
+            version = project.get("version")
+            if isinstance(version, str):
+                return version
+    except Exception:
+        pass
+
+    match = re.search(
+        r'(?m)^[ \t]*version[ \t]*=[ \t]*["\']([^"\']+)["\']',
+        raw_text,
+    )
+    if match:
+        return match.group(1)
+    return "0.0.0"
+
+
+__version__ = load_project_version(PROJECT_FILE)
 CATALOG_DIR = Path(_path_vars.get("CATALOG", DATA_DIR / "catalog"))
 
 random_generator = random.SystemRandom()
@@ -1271,7 +1302,7 @@ def format_generation_details(context: dict[str, Any]) -> str:
     prefix_value = context.get("prefix", "")
     punctuation_value = context.get("terminal_punctuation", "")
     lines = [
-        "Cognitive Passphrases Generator v0.6.1 - Details",
+        f"Cognitive Passphrases Generator v{__version__} - Details",
         f"  order: {context['order']}",
         f"  separators: {separators_spec}",
         f"  prefix: {prefix_value if prefix_value else 'none'}",
@@ -1379,35 +1410,29 @@ def main() -> None:
     if args.profile is None:
         parser.error("the following arguments are required: profile")
 
-    from profiles import collect_profiles_validation_results
-
     try:
-        raw_profiles, invalid_profiles = collect_profiles_validation_results(PROFILE_FILE)
+        profiles = load_profiles(PROFILE_FILE)
     except (ValueError, FileNotFoundError, TypeError) as ex:
-        message = f"Validation failed while scanning profiles file: {ex}"
+        message = f"Validation failed while loading profiles file: {ex}"
         raise SystemExit(message) from ex
 
-    profiles = {k.lower(): v for k, v in raw_profiles.items()}
+    from profiles import validate_profile_definition
+
+    if not isinstance(profiles, dict):
+        raise SystemExit(f"Profiles file {PROFILE_FILE} did not contain a JSON object")
+
+    profiles = {k.lower(): v for k, v in profiles.items()}
     profile_name = args.profile.lower()
     if profile_name not in profiles:
         message = f'Error: profile "{args.profile}" not found in {PROFILE_FILE}'
         raise SystemExit(message)
 
-    if invalid_profiles:
-        print("Warning: some profiles in profiles.json are invalid and will be skipped:")
-        for invalid_name, error_text in invalid_profiles.items():
-            print(f"  - {invalid_name}: {error_text}")
-
-        if sys.stdin.isatty():
-            answer = input("Continue using only validated profiles? [y/N] ").strip().lower()
-            if answer not in {"y", "yes"}:
-                raise SystemExit("Aborted due to invalid profile definitions.")
-        else:
-            raise SystemExit(
-                "Profiles file contains invalid definitions. Re-run interactively to confirm continuing or fix the listed errors.",
-            )
-
     profile_def = profiles[profile_name]
+    try:
+        validate_profile_definition(profile_def)
+    except (TypeError, ValueError, FileNotFoundError) as ex:
+        message = f"Validation failed for profile '{args.profile}': {ex}"
+        raise SystemExit(message) from ex
 
     order = "normal"
     if args.order == "random":
@@ -1422,7 +1447,7 @@ def main() -> None:
     entropy_label = classify_entropy(entropy_bits)
 
     print(
-        f"Cognitive Passphrases Generator - Actual Entropy level [{entropy_bits:.2f}] ({entropy_label})",
+        f"Cognitive Passphrases Generator v{__version__} - Actual Entropy level [{entropy_bits:.2f}] ({entropy_label})",
     )
 
     for _ in range(args.count):

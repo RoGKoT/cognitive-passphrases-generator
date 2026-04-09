@@ -115,15 +115,15 @@
   },
   "test": {
     "files": {
-      "subject:people":"",
-      "verb:action": "",
-      "complement:timestamp": ""
+      "subject:people": "movies/peoples/heroes.json",
+      "verb:action": "movies/titles-as/actions.json",
+      "complement:timestamp": "movies/titles-as/timestamps.json"
     },
     "separators":{
       "enabled": true,
       "odds": 100,
       "files": {
-        "separators": ""
+        "separators": "common/separators.json"
       },
       "values": []
     },
@@ -132,7 +132,7 @@
       "odds": 50,
       "fallback": "separators",
       "files": {
-        "delimiters": ""
+        "delimiters": "common/delimiters/*"
       },
       "values": []
     },
@@ -140,7 +140,7 @@
       "enabled": false,
       "odds": 20,
       "files": {
-        "titles":""
+        "titles": "common/prefixes/subjects/titles.json"
       },
       "values": []  
     },
@@ -148,7 +148,7 @@
       "enabled": false,
       "odds": 57,
       "files": {
-        "terminal-punctuation": ""
+        "terminal-punctuation": "common/terminal-punctuations.json"
       },
       "values": []
     },
