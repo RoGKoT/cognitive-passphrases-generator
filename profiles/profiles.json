@@ -27,8 +27,8 @@
       },
       "values": []
     },
-    "space": {
-      "enabled": true,
+    "space": { // Represents the odds of a "delimiter" being a space character. 
+      "enabled": false,
       "odds": 41,
       "files": {},
       "values": [" "]
@@ -49,11 +49,11 @@
       "files": {
         "separators": "common/separators.json"
       },
-      "values": []
+      "values": ["YabbaDabbaDoo"]
     },
     "delimiters":{
       "enabled": true,
-      "odds": 100,
+      "odds": 50,
       "fallback": "separators",
       "files": {
         "delimiters": "common/delimiters/*"
@@ -70,7 +70,7 @@
     },
     "terminal-punctuation": {
       "enabled": true,
-      "odds": 100,
+      "odds": 57,
       "files": {
         "terminal-punctuation": "common/terminal-punctuations.json"
       },
@@ -78,7 +78,7 @@
     },
     "space": {
       "enabled": true,
-      "odds": 100,
+      "odds": 0,
       "files": {},
       "values": [" "]
     }
@@ -111,6 +111,52 @@
       "odds": 0,
       "files": {},
       "values": []
+    }
+  },
+  "test": {
+    "files": {
+      "subject:people":"",
+      "verb:action": "",
+      "complement:timestamp": ""
+    },
+    "separators":{
+      "enabled": true,
+      "odds": 100,
+      "files": {
+        "separators": ""
+      },
+      "values": []
+    },
+    "delimiters":{
+      "enabled": false,
+      "odds": 50,
+      "fallback": "separators",
+      "files": {
+        "delimiters": ""
+      },
+      "values": []
+    },
+    "prefix": {
+      "enabled": false,
+      "odds": 20,
+      "files": {
+        "titles":""
+      },
+      "values": []  
+    },
+    "terminal-punctuation": {
+      "enabled": false,
+      "odds": 57,
+      "files": {
+        "terminal-punctuation": ""
+      },
+      "values": []
+    },
+    "space": {
+      "enabled": false,
+      "odds": 0,
+      "files": {},
+      "values": [" "]
     }
   }
 }

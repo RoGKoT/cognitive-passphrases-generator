@@ -49,6 +49,11 @@ Current profile keys:
 - `space`:
   - optional.
   - object with keys: `enabled`, `odds`, `files`, `values`.
+  - space entries are only effective when one of the following is true:
+    - `separators.files` is present and non-empty
+    - `delimiters` is enabled and has non-empty `files` or non-empty `values`
+  - `space` does not work with `separators.values` only
+  - `space` is not used for `prefix` or `terminal-punctuation`
 - `agents`:
   - optional.
   - metadata describing future AI generation agents.
@@ -63,6 +68,10 @@ Current profile keys:
 - `separators` must be an object in the new schema.
 - Explicit `values` are preserved exactly as written.
 - `files` sources load additional separator candidates from the catalog.
+- `space` is a special separator feature that inserts a literal space candidate.
+  - it works only when `separators.files` is provided or when `delimiters` is enabled with valid sources.
+  - it does not work with `separators.values` alone.
+  - it does not affect `prefix` or `terminal-punctuation`.
 
 ## CLI options
 

@@ -86,6 +86,11 @@ Each profile currently supports these keys:
   - same structure as `separators`
 - `space`: optional object describing space generation behavior
   - same structure as `separators`
+  - `space` is only effective when either:
+    - `separators.files` is present and non-empty, or
+    - `delimiters` is enabled with non-empty `files` or non-empty `values`
+  - `space` does not work with `separators.values` alone
+  - `space` is independent of `prefix` and `terminal-punctuation`
 - `agents`: metadata object for future AI generation support
 
 Example profile:

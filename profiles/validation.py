@@ -222,10 +222,39 @@ def validate_profile_definition(profile_def: dict[str, Any]) -> dict[str, Any]:
         _validate_feature_object(terminal_punctuation, "terminal-punctuation")
 
     space = profile_def.get("space")
+    if isinstance(space, list):
+        space = {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": space,
+        }
     if space is not None:
         if not isinstance(space, dict):
-            raise TypeError("space must be an object")
+            raise TypeError("space must be an object or list")
         _validate_feature_object(space, "space")
+
+        if space["enabled"]:
+            has_valid_separators = (
+                isinstance(separators, dict)
+                and separators.get("enabled", False)
+                and isinstance(separators.get("files", {}), dict)
+                and bool(separators.get("files", {}))
+            )
+            has_valid_delimiters = False
+            if isinstance(delimiters, dict) and delimiters.get("enabled", False):
+                delimiter_files = delimiters.get("files", {})
+                delimiter_values = delimiters.get("values", [])
+                if isinstance(delimiter_files, dict) and delimiter_files:
+                    has_valid_delimiters = True
+                elif isinstance(delimiter_values, list) and delimiter_values:
+                    has_valid_delimiters = True
+
+            if not has_valid_separators and not has_valid_delimiters:
+                raise ValueError(
+                    "Active space feature requires separators.files or enabled delimiters with values or files. "
+                    "It cannot work with separators.values alone.",
+                )
 
     agents = profile_def.get("agents")
     if agents is not None and not isinstance(agents, dict):

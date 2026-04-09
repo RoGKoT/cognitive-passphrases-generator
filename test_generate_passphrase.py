@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
+import generate_passphrase
 import pytest
 from hypothesis import given, strategies as st
 
@@ -17,6 +18,7 @@ from generate_passphrase import (
     estimate_expression_entropy,
     normalize_separators,
     estimate_parts_entropy,
+    estimate_prefix_entropy,
     estimate_profile_definition_entropy,
     estimate_template_entropy,
     format_generation_details,
@@ -124,6 +126,138 @@ def test_estimate_profile_definition_entropy_includes_random_order():
     normal_entropy = estimate_profile_definition_entropy(profile, order="normal")
     random_entropy = estimate_profile_definition_entropy(profile, order="random")
     assert random_entropy > normal_entropy
+
+
+def test_estimate_profile_definition_entropy_includes_delimiters_fallback_to_separators():
+    profile = {
+        "files": {
+            "past": "common/timestamps/past.json",
+            "present": "common/timestamps/present.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+    entropy_with_fallback = estimate_profile_definition_entropy(profile)
+    entropy_without_fallback = estimate_profile_definition_entropy(
+        {**profile, "delimiters": {"enabled": False}, "separators": profile["separators"]},
+    )
+    assert entropy_with_fallback >= entropy_without_fallback
+
+
+def test_estimate_profile_definition_entropy_includes_optional_terminal_punctuation():
+    profile = {
+        "files": {
+            "past": "common/timestamps/past.json",
+            "present": "common/timestamps/present.json",
+        },
+        "separators": ["-"],
+        "terminal-punctuation": {
+            "enabled": True,
+            "odds": 50,
+            "files": {"terminal-punctuation": "common/terminal-punctuations.json"},
+            "values": [],
+        },
+    }
+    punctuation_values = list_from_name("common/terminal-punctuations.json")
+    expected = estimate_profile_definition_entropy(
+        {"files": profile["files"], "separators": profile["separators"]},
+    ) + math.log2(len(punctuation_values) + 1)
+    assert math.isclose(estimate_profile_definition_entropy(profile), expected, rel_tol=1e-9)
+
+
+def test_estimate_prefix_entropy_ignores_disabled_prefix():
+    profile = {
+        "files": {
+            "past": "common/timestamps/past.json",
+            "present": "common/timestamps/present.json",
+        },
+        "separators": ["-"],
+        "prefix": {
+            "enabled": False,
+            "odds": 100,
+            "files": {"titles": "common/prefixes/subjects/titles.json"},
+            "values": [],
+        },
+    }
+    assert estimate_profile_definition_entropy(profile) == estimate_profile_definition_entropy(
+        {"files": profile["files"], "separators": ["-"]},
+    )
+
+
+def test_estimate_prefix_entropy_includes_legacy_prefixes():
+    profile = {
+        "files": {
+            "past": "common/timestamps/past.json",
+            "present": "common/timestamps/present.json",
+        },
+        "separators": ["-"],
+        "prefixes": "common/prefixes/subjects/titles.json",
+    }
+    expected = math.log2(len(list_from_name("common/prefixes/subjects/titles.json")))
+    assert math.isclose(estimate_prefix_entropy(profile), expected, rel_tol=1e-9)
+
+
+def test_estimate_profile_definition_entropy_includes_space_in_delimiters_fallback(monkeypatch):
+    original_load_json_file = generate_passphrase.load_json_file
+
+    def fake_load_json_file(path):
+        if path.name == "separators.json" and str(path).replace("\\", "/").endswith("common/separators.json"):
+            return ["-", "@"]
+        return original_load_json_file(path)
+
+    monkeypatch.setattr(generate_passphrase, "load_json_file", fake_load_json_file)
+    monkeypatch.setattr(generate_passphrase, "load_delimiter_values", lambda path: [])
+
+    profile = {
+        "files": {
+            "subject:actor": "movies/peoples/actors.json",
+            "subject:character": "movies/peoples/characters.json",
+        },
+        "separators": {
+            "enabled": False,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 0,
+            "fallback": "separators",
+            "files": {},
+            "values": ["and"],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    entropy_with_space = estimate_profile_definition_entropy(profile)
+
+    profile_without_space = {
+        **profile,
+        "space": {
+            "enabled": False,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    entropy_without_space = estimate_profile_definition_entropy(profile_without_space)
+
+    assert entropy_with_space > entropy_without_space
 
 
 def test_render_profile_definition_produces_string():
@@ -357,6 +491,234 @@ def test_validate_profile_definition_accepts_prefix_and_terminal_punctuation_and
     assert validated["agents"]["api"]["name"] == "example"
 
 
+def test_validate_profile_definition_accepts_space_feature_object():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["space"]["values"] == [" "]
+
+
+def test_validate_profile_definition_accepts_space_feature_list_shorthand():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+        "space": [" "],
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["space"]["values"] == [" "]
+
+
+def test_validate_profile_definition_accepts_active_space_with_delimiters_values_only():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [","],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [",", " "],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["delimiters"]["values"] == [",", " "]
+
+
+def test_validate_profile_definition_accepts_active_space_with_delimiters_fallback_and_separators_files():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["delimiters"]["fallback"] == "separators"
+
+
+def test_validate_profile_definition_accepts_active_space_with_separators_files_and_values():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [",", "@"],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["separators"]["values"] == [",", "@"]
+
+
+def test_validate_profile_definition_accepts_active_space_with_delimiters_files_only():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [","],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["delimiters"]["files"]
+
+
+def test_validate_profile_definition_accepts_active_space_with_delimiters_values_only():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [","],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [",", " "],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    validated = validate_profile_definition(profile_def)
+    assert validated["space"]["enabled"] is True
+    assert validated["delimiters"]["values"] == [",", " "]
+
+
+def test_validate_profile_definition_rejects_active_space_with_separators_values_only():
+    profile_def = {
+        "files": {
+            "actors": "movies/peoples/actors.json",
+            "titles": "movies/titles.json",
+        },
+        "separators": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": ["-"],
+        },
+        "space": {
+            "enabled": True,
+            "odds": 100,
+            "files": {},
+            "values": [" "],
+        },
+    }
+    with pytest.raises(
+        ValueError,
+        match="Active space feature requires separators.files or enabled delimiters with values or files",
+    ):
+        validate_profile_definition(profile_def)
+
+
 def test_validate_profile_definition_accepts_delimiters_with_fallback():
     profile_def = {
         "files": {
@@ -468,11 +830,44 @@ def test_build_generation_context_falls_back_to_separators_when_delimiters_do_no
     with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
         "generate_passphrase.random_generator.choice",
     ) as mock_choice:
-        mock_choice.side_effect = ["ActorValue", "CharacterValue"]
+        mock_choice.side_effect = ["ActorValue", "CharacterValue", ","]
         context = build_generation_context(profile_def)
 
     assert context["separator_values"] == [","]
     assert context["rendered"] == "ActorValue,CharacterValue"
+    assert mock_choice.call_count == 3
+
+
+def test_build_generation_context_falls_back_to_separators_when_delimiters_do_not_trigger_and_separators_disabled():
+    profile_def = {
+        "files": {
+            "subject:actor": "movies/peoples/actors.json",
+            "subject:character": "movies/peoples/characters.json",
+        },
+        "separators": {
+            "enabled": False,
+            "odds": 100,
+            "files": {"separators": "common/separators.json"},
+            "values": [],
+        },
+        "delimiters": {
+            "enabled": True,
+            "odds": 0,
+            "fallback": "separators",
+            "files": {"delimiters": "common/delimiters/*"},
+            "values": [],
+        },
+    }
+
+    with patch("generate_passphrase.random_generator.randrange", return_value=0), patch(
+        "generate_passphrase.random_generator.choice",
+    ) as mock_choice:
+        mock_choice.side_effect = ["ActorValue", "CharacterValue", ","]
+        context = build_generation_context(profile_def)
+
+    assert context["separator_values"] == [","]
+    assert context["rendered"] == "ActorValue,CharacterValue"
+    assert mock_choice.call_count == 3
 
 
 def test_build_generation_context_applies_prefix_on_odds():
@@ -874,6 +1269,28 @@ def test_load_profiles_rejects_non_dict_json(tmp_path):
         match=r"Profiles file .* did not contain a JSON object",
     ):
         load_profiles(path)
+
+
+def test_load_profiles_accepts_json_comments(tmp_path):
+    path = tmp_path / "profiles.json"
+    path.write_text(
+        '{\n'
+        '  "movies": {\n'
+        '    "files": {"subject:actor": "movies/peoples/actors.json"},\n'
+        '    "space": { // comment\n'
+        '      "enabled": true,\n'
+        '      "odds": 100,\n'
+        '      "files": {},\n'
+        '      "values": [" "]\n'
+        '    }\n'
+        '  }\n'
+        '}',
+        encoding="utf-8",
+    )
+    profiles = load_profiles(path)
+
+    assert "movies" in profiles
+    assert profiles["movies"]["space"]["enabled"] is True
 
 
 def test_build_variation_context_from_saved_selection_preserves_normal_order():

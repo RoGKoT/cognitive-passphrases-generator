@@ -73,6 +73,49 @@ HIGH_ENTROPY = 80
 MIN_ORDER_ENTRIES = 2
 
 
+def _strip_json_comments(text: str) -> str:
+    cleaned: list[str] = []
+    in_string = False
+    escaped = False
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if in_string:
+            cleaned.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if char == '"':
+            cleaned.append(char)
+            in_string = True
+            i += 1
+            continue
+
+        if char == "/" and i + 1 < len(text) and text[i + 1] == "/":
+            i += 2
+            while i < len(text) and text[i] not in "\r\n":
+                i += 1
+            continue
+
+        if char == "/" and i + 1 < len(text) and text[i + 1] == "*":
+            i += 2
+            while i + 1 < len(text) and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+
+        cleaned.append(char)
+        i += 1
+
+    return "".join(cleaned)
+
+
 def load_profiles(path: Path) -> dict[str, Any]:
     """Loads profiles from a JSON file.
 
@@ -91,16 +134,19 @@ def load_profiles(path: Path) -> dict[str, Any]:
     try:
         profiles = json.loads(text)
     except json.JSONDecodeError:
-        profiles = {}
-        for raw_line in text.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            key, value = line.split(":", 1)
-            profiles[key.strip()] = value.strip()
-        return profiles
+        try:
+            profiles = json.loads(_strip_json_comments(text))
+        except json.JSONDecodeError:
+            profiles = {}
+            for raw_line in text.splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                profiles[key.strip()] = value.strip()
+            return profiles
 
     if not isinstance(profiles, dict):
         message = f"Profiles file {path} did not contain a JSON object"
@@ -281,11 +327,17 @@ def build_feature_value(feature_def: dict[str, Any]) -> str:
     return str(random_generator.choice(values))
 
 
-def build_separator_candidates(profile_def: dict[str, Any]) -> list[str]:
+def build_separator_candidates(profile_def: dict[str, Any], ignore_disabled_separators: bool = False) -> list[str]:
     candidates: list[str] = []
     for feature_name in ("separators", "space"):
         feature_def = profile_def.get(feature_name)
-        if isinstance(feature_def, dict) and feature_triggers(feature_def):
+        if not isinstance(feature_def, dict):
+            continue
+        if feature_name == "separators":
+            should_build = ignore_disabled_separators or feature_triggers(feature_def)
+        else:
+            should_build = feature_triggers(feature_def)
+        if should_build:
             candidates.extend(build_feature_candidates(feature_def))
     return candidates
 
@@ -372,13 +424,16 @@ def build_separator_values_for_profile(
             if delimiter_values:
                 return delimiter_values, [], True
             if delimiter_feature.get("fallback") == "separators":
-                separator_candidates = build_separator_candidates(profile_def)
+                separator_candidates = build_separator_candidates(
+                    profile_def,
+                    ignore_disabled_separators=True,
+                )
                 return (
                     build_separator_values(
                         separator_candidates,
                         max(len(keys) - 1, 0),
                         order,
-                        randomize=False,
+                        randomize=randomize,
                     ),
                     separator_candidates,
                     False,
@@ -386,13 +441,16 @@ def build_separator_values_for_profile(
             return [], [], False
 
         if delimiter_feature.get("fallback") == "separators":
-            separator_candidates = build_separator_candidates(profile_def)
+            separator_candidates = build_separator_candidates(
+                profile_def,
+                ignore_disabled_separators=True,
+            )
             return (
                 build_separator_values(
                     separator_candidates,
                     max(len(keys) - 1, 0),
                     order,
-                    randomize=False,
+                    randomize=randomize,
                 ),
                 separator_candidates,
                 False,
@@ -404,7 +462,7 @@ def build_separator_values_for_profile(
             separator_candidates,
             max(len(keys) - 1, 0),
             order,
-            randomize=False,
+            randomize=randomize,
         ),
         separator_candidates,
         False,
@@ -934,21 +992,38 @@ def estimate_delimiter_entropy(keys: list[str]) -> float:
     return entropy
 
 
+def _estimate_optional_feature_entropy(feature_def: dict[str, Any]) -> float:
+    if not isinstance(feature_def, dict) or not feature_def.get("enabled", False):
+        return 0.0
+    values = build_feature_candidates(feature_def)
+    n = len(values) if hasattr(values, "__len__") else 1
+    if n <= 0:
+        return 0.0
+    if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < 100:
+        return math.log2(n + 1)
+    return math.log2(n)
+
+
 def estimate_prefix_entropy(profile_def: dict[str, Any]) -> float:
     prefix_feature = profile_def.get("prefix")
     if isinstance(prefix_feature, dict):
-        values = build_feature_candidates(prefix_feature)
+        return _estimate_optional_feature_entropy(prefix_feature)
+
+    legacy_prefix_source = profile_def.get("prefixes")
+    if isinstance(legacy_prefix_source, str):
+        values = list_from_name(legacy_prefix_source)
+        if values is None:
+            return 0.0
         n = len(values) if hasattr(values, "__len__") else 1
         return math.log2(n) if n > 0 else 0.0
+
     return 0.0
 
 
 def estimate_terminal_punctuation_entropy(profile_def: dict[str, Any]) -> float:
     terminal_feature = profile_def.get("terminal-punctuation")
-    if isinstance(terminal_feature, dict) and terminal_feature.get("enabled", False):
-        values = build_feature_candidates(terminal_feature)
-        n = len(values) if hasattr(values, "__len__") else 1
-        return math.log2(n) if n > 0 else 0.0
+    if isinstance(terminal_feature, dict):
+        return _estimate_optional_feature_entropy(terminal_feature)
     return 0.0
 
 
@@ -1038,15 +1113,52 @@ def estimate_profile_definition_entropy(
     delimiters_spec = profile_def.get("delimiters")
     separators_spec = normalize_separators_feature_spec(profile_def.get("separators"))
     if isinstance(delimiters_spec, dict) and delimiters_spec.get("enabled", False):
-        entropy += estimate_delimiter_entropy(list(files.keys()))
+        delimiter_candidates: list[str] = []
+        explicit_values = delimiters_spec.get("values", [])
+        if isinstance(explicit_values, list):
+            delimiter_candidates.extend(str(value) for value in explicit_values)
+        for left, right in zip(list(files.keys()), list(files.keys())[1:]):
+            file_name = delimiter_file_name(left, right)
+            try:
+                typed_values = load_delimiter_values(file_name) or []
+            except FileNotFoundError:
+                typed_values = []
+            delimiter_candidates.extend(str(value) for value in typed_values)
+
+        if delimiters_spec.get("fallback") == "separators":
+            separator_values: list[str] = []
+            for feature_name in ("separators", "space"):
+                feature_def = separators_spec if feature_name == "separators" else profile_def.get(feature_name)
+                if isinstance(feature_def, dict):
+                    if feature_name == "separators":
+                        separator_values.extend(build_feature_candidates(feature_def))
+                    elif feature_def.get("enabled", False):
+                        separator_values.extend(build_feature_candidates(feature_def))
+            candidate_set = set(delimiter_candidates)
+            candidate_set.update(separator_values)
+            if candidate_set:
+                entropy += math.log2(len(candidate_set))
+        else:
+            n = len(delimiter_candidates) if hasattr(delimiter_candidates, "__len__") else 1
+            if n > 0:
+                if isinstance(delimiters_spec.get("odds"), (int, float)) and delimiters_spec["odds"] < 100:
+                    entropy += math.log2(n + 1)
+                else:
+                    entropy += math.log2(n)
     elif isinstance(separators_spec, dict):
         separator_values: list[str] = []
+        has_optional = False
         for feature_name in ("separators", "space"):
             feature_def = separators_spec if feature_name == "separators" else profile_def.get(feature_name)
             if isinstance(feature_def, dict) and feature_def.get("enabled", False):
                 separator_values.extend(build_feature_candidates(feature_def))
+                if isinstance(feature_def.get("odds"), (int, float)) and feature_def["odds"] < 100:
+                    has_optional = True
         if separator_values:
-            entropy += math.log2(len(separator_values))
+            count = len(separator_values)
+            if has_optional:
+                count += 1
+            entropy += math.log2(count)
     else:
         raise TypeError("separators must be an object")
     entropy += estimate_prefix_entropy(profile_def)

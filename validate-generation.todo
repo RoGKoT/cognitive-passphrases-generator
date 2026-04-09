@@ -1,0 +1,10 @@
+à partir de profiles.json#test, produire validate_generation.py --log-process
+Tous les fichiers du catalogue sont disponibles pour la validation, mais les éléments utilisés doivent provenir des fichiers spécifiés dans le profil de test.
+Valider que les éléments utilisés proviennent bien des fichiers spécifiés, sans aucune invention ou présomption.
+Valider chaque génération contre le profil comme SSOT.
+Modifier tous les paramètres du profil pour tester les limites et les différentes combinaisons possibles, notamment en activant ou désactivant les différentes fonctionnalités (préfixe, suffixe, séparateurs, espace, etc.) et en ajustant les probabilités.
+Utiliser des valeurs hors-limites et noter les résultats/comportements pour ajustement si requis.
+Modifier le minimum de paramètres à la fois pour isoler les effets de chaque changement.
+Noter les valeurs attendues et les résultats obtenus pour chaque test, afin de valider le comportement du code.
+Utiliser toutes les techniques de tests possibles (tests unitaires, tests d'intégration, tests de validation, etc.)
+Exécuter plusieurs itérations pour valider la génération aléatoire.
