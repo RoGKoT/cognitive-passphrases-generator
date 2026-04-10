@@ -1308,18 +1308,33 @@ def format_generation_details(context: dict[str, Any]) -> str:
         f"  prefix: {prefix_value if prefix_value else 'none'}",
         f"  terminal punctuation: {punctuation_value if punctuation_value else 'none'}",
         "",
-        f"  {'Field':<10} | {'Value':<34} | Separator",
-        f"  {'-' * 10} | {'-' * 34} | {'-' * 9}",
     ]
     detail_keys = context["selected_keys"]
 
+    detail_rows: list[tuple[str, str, str]] = []
     for index, key in enumerate(detail_keys):
-        value = context["values_by_key"].get(key, "")
+        value = str(context["values_by_key"].get(key, ""))
         separator = ""
         if index < len(context["separator_values"]):
             separator = context["separator_values"][index]
         separator_display = f"'{separator}'" if separator else ""
-        lines.append(f"  {key:<10} | {value:<34} | {separator_display}")
+        detail_rows.append((key, value, separator_display))
+
+    field_width = max(len("Field"), *(len(row[0]) for row in detail_rows))
+    value_width = max(len("Value"), *(len(row[1]) for row in detail_rows))
+    separator_width = max(len("Separator"), *(len(row[2]) for row in detail_rows))
+
+    lines.append(
+        f"  {'Field':<{field_width}} | {'Value':<{value_width}} | {'Separator':<{separator_width}}",
+    )
+    lines.append(
+        f"  {'-' * field_width} | {'-' * value_width} | {'-' * separator_width}",
+    )
+
+    for field_name, field_value, separator_display in detail_rows:
+        lines.append(
+            f"  {field_name:<{field_width}} | {field_value:<{value_width}} | {separator_display:<{separator_width}}",
+        )
 
     lines.extend(
         [

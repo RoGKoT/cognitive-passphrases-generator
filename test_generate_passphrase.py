@@ -364,6 +364,50 @@ def test_format_generation_details_shows_all_output_modes():
     assert "Entropy level" in details
 
 
+def test_format_generation_details_uses_dynamic_column_widths(monkeypatch):
+    context = {
+        "profile_def": {"separators": ["-"]},
+        "selected_keys": ["short", "very_long_field_name_type"],
+        "values_by_key": {
+            "short": "A",
+            "very_long_field_name_type": "very_long_value_example",
+        },
+        "separator_values": ["-", "@"],
+        "order": "normal",
+        "base_entropy": 1.0,
+        "order_entropy": 0.2,
+        "separator_entropy": 0.3,
+        "actual_entropy": 1.5,
+        "strict_entropy": 2.0,
+        "strict_render": "rendered-passphrase",
+        "separators": ["-", "@"],
+    }
+
+    def fake_variation(_context_arg, _order_name):
+        return {"actual_entropy": 1.5, "strict_render": "rendered-passphrase"}
+
+    monkeypatch.setattr(
+        generate_passphrase,
+        "build_variation_context_from_saved_selection",
+        fake_variation,
+    )
+
+    details = format_generation_details(context)
+    lines = details.splitlines()
+    table_header_index = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith("  Field") and "Separator" in line
+    )
+    pipe_positions = [i for i, ch in enumerate(lines[table_header_index]) if ch == "|"]
+
+    for row_line in lines[table_header_index + 2 : table_header_index + 2 + len(context["selected_keys"])]:
+        assert [i for i, ch in enumerate(row_line) if ch == "|"] == pipe_positions
+
+    assert "very_long_field_name_type" in details
+    assert "very_long_value_example" in details
+
+
 @patch("generate_passphrase.random_generator.shuffle")
 @patch("generate_passphrase.random_generator.choice")
 def test_format_generation_details_uses_same_generation_for_all_modes(
