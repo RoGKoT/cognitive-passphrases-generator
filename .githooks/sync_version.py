@@ -29,7 +29,7 @@ def update_pyproject_version(tag: str) -> bool:
     content = PROJECT_FILE.read_text(encoding="utf-8")
     new_content = re.sub(
         r'(?m)^(version\s*=\s*)(["\'])([^"\']+)(["\'])',
-        rf"\1\2{tag}\4",
+        lambda m: f"{m.group(1)}{m.group(2)}{tag}{m.group(4)}",
         content,
         count=1,
     )
